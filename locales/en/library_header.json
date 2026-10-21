@@ -7,6 +7,10 @@
     "value": "Recommended",
     "description": "Library header control: opens the library's recommended page (the server's hubs for the library). One short word."
   },
+  "library_header.folders": {
+    "value": "By Folder",
+    "description": "Library header control: opens the library's on-disk folder browser. Shown only for libraries the server advertises the folder view for. Two short words."
+  },
   "library_header.sort_filter": {
     "value": "Sort & Filter",
     "description": "Library header control that opens the one menu holding the type to show, the sort order and the filters. The current sort follows it after a middle dot and a fold arrow ends it, so keep the label short."

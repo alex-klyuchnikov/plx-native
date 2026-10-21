@@ -260,6 +260,18 @@ fn store(command: &plx_data::stores::StoreCmd) -> Result<Value, &'static str> {
                 CollectionCmd::ApplyView { .. } => return Err("unsupported controlled collection command"),
             }})
         }
+        StoreCmd::Folders(cmd) => {
+            use plx_data::stores::folders::FoldersCmd;
+            json!({"folders":match cmd {
+                FoldersCmd::Open { target } => json!({"open":[target.sid.raw(),target.section,target.parent,target.title]}),
+                FoldersCmd::Drill { parent, title } => json!({"drill":[parent,title]}),
+                FoldersCmd::Pop => json!("pop"),
+                FoldersCmd::Window { wanted, focus } => json!({"window":[wanted.start,wanted.end,focus]}),
+                FoldersCmd::Close => json!("close"),
+                FoldersCmd::Reset => json!("reset"),
+                FoldersCmd::ApplyView { .. } => return Err("unsupported controlled folders command"),
+            }})
+        }
         _ => return Err("unsupported Home store command"),
     })
 }

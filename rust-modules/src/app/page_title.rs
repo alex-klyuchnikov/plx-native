@@ -24,6 +24,16 @@ pub(crate) fn of<'a>(page: ScreenId, views: &AppViews<'a>) -> Option<Cow<'a, str
         page_id::WATCHLIST => msg::watchlist_page_title(),
         page_id::LIBRARY_COLLECTIONS => msg::browse_kind_collections(),
         page_id::LIBRARY_RECOMMENDED => msg::library_header_recommended(),
+        page_id::LIBRARY_FOLDERS => {
+            // The folder page beneath names itself by the level the store still holds open (a
+            // Detail pushed over it changes nothing there); the root level names the section.
+            let level = views.folders.current()?;
+            if !level.target.title.is_empty() { level.target.title.as_str() }
+            else {
+                let directory = views.directory;
+                directory.current().and_then(|i| directory.sections().get(i)).map(|section| section.row.title.as_str())?
+            }
+        }
         page_id::LIBRARY => {
             let directory = views.directory;
             directory.current().and_then(|i| directory.sections().get(i)).map(|section| section.row.title.as_str())?

@@ -124,6 +124,10 @@ pub enum Icon {
     /// collection that has no artwork of its own (`ui::collection_tile`). Two stroked elements
     /// that never touch (a unit of air between them), so rule 1's crease cannot form.
     Collection,
+    /// A folder outline — a DIRECTORY, drawn by the neutral tile of a folder row in the Browse by
+    /// Folders listing (`ui::folder_tile`). One closed stroked path, no interior, so the absence
+    /// ground reads through it.
+    Folder,
     /// A play triangle behind a leading bar — **"Play from Start"** (restart, not resume), worn by
     /// the card menu's row of that name and by nothing else.
     ///
@@ -317,6 +321,7 @@ fn src(id: Icon) -> &'static str {
         Icon::Episode => include_str!("../../../assets/icons/episode.svg"),
         Icon::Show => include_str!("../../../assets/icons/show.svg"),
         Icon::Collection => include_str!("../../../assets/icons/collection.svg"),
+        Icon::Folder => include_str!("../../../assets/icons/folder.svg"),
         Icon::PlayStart => include_str!("../../../assets/icons/play-start.svg"),
         Icon::Close => include_str!("../../../assets/icons/close.svg"),
         Icon::More => include_str!("../../../assets/icons/more.svg"),

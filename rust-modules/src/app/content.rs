@@ -941,7 +941,7 @@ pub(crate) unsafe fn library_page_request(
     let source = MachineId::Instance(instance);
     match request {
         LibraryReq::PublishShelves { .. } => unreachable!("`library_requests` publishes them"),
-        LibraryReq::OpenListing { .. } | LibraryReq::BackToHome { .. } | LibraryReq::Tab(_) | LibraryReq::Account =>
+        LibraryReq::OpenListing { .. } | LibraryReq::OpenFolder { .. } | LibraryReq::BackToHome { .. } | LibraryReq::Tab(_) | LibraryReq::Account =>
             unreachable!("`library_navigation` performed it"),
         LibraryReq::Menu { kind, anchor, target, folded, control } => {
             pages.nav.next_style = plx_ui::containers::modal::Style::Compact;
@@ -990,6 +990,12 @@ pub(crate) fn library_navigation(
                 Listing::All => return None,
             };
             bridge::nav_push_with_return(pages, arg, ret);
+        }
+        LibraryReq::OpenFolder { section, parent, name } => {
+            // The drill's page opens its own level on Enter; this only puts the entry on the stack.
+            bridge::nav_push_with_return(pages, AppArg::LibraryFolders {
+                section: *section, parent: *parent, name: name.clone(),
+            }, ret);
         }
         LibraryReq::Account => chip_activate(pages),
         LibraryReq::BackToHome { kind } => {

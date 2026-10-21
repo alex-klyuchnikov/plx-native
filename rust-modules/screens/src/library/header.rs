@@ -150,6 +150,18 @@ impl LibraryScreen {
                 widest.push(control(slot.clone(), slot));
             }
         }
+        // The By Folder control follows the same budget rule as Collections: its room is kept in
+        // the widest case for EVERY library, so the names never repack between an unknown answer
+        // and the answer; only an advertised library puts the control on the row itself.
+        match self.folders {
+            FoldersControl::Shown => {
+                right.push(item(msg::library_header_folders()));
+                widest.push(item(msg::library_header_folders()));
+            }
+            FoldersControl::Unknown | FoldersControl::Hidden => {
+                widest.push(item(msg::library_header_folders()));
+            }
+        }
         right.push(HeaderItem { selected_plate: self.listing == Listing::Recommended,
             ..item(msg::library_header_recommended()) });
         widest.push(item(msg::library_header_recommended()));
@@ -172,6 +184,7 @@ impl LibraryScreen {
         (std::ptr::from_ref(plx_platform::i18n::current()) as usize).hash(&mut h);
         self.view_section(cx).hash(&mut h);
         self.collections.hash(&mut h);
+        self.folders.hash(&mut h);
         self.listing.hash(&mut h);
         self.listed.code().hash(&mut h);
         matches!(self.kind, SecKind::Movie).hash(&mut h);
@@ -217,6 +230,7 @@ impl LibraryScreen {
             (CollectionsControl::Unknown, held @ CollectionsControl::Count(_)) if of == self.header_of => held,
             (read, _) => read,
         };
+        self.folders = FoldersControl::of(view.and_then(|index| H::folders_offer(cx, index)));
         self.note_unfiltered(cx);
         // `sync` runs every frame; the row (text measurement, packing) is rebuilt only when one
         // of the things it is made of changed.

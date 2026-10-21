@@ -307,6 +307,11 @@ pub enum LibraryReq {
     /// control): `AppArg::LibraryCollections` / `LibraryRecommended` for `section`, the section's
     /// key on its server. Never `Listing::All`, which is this page.
     OpenListing { listing: crate::library::Listing, section: u32 },
+    /// Push one level of the By Folder drill: OK on the header's Folders control (the root:
+    /// `parent` 0, `name` empty) or OK on a folder card (the child, whose `parent` id came from the
+    /// server's own row `key`). The screen sends the store's `Drill` itself; the root's `Open` is
+    /// the page's own `Enter`.
+    OpenFolder { section: u32, parent: u64, name: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1238,6 +1243,14 @@ pub trait CollectionLike: AppLike + Sized {
     fn back_to<'a>(_cx: &Cx<'a, Self>) -> Option<std::borrow::Cow<'a, str>> { None }
 }
 
+/// A host publishing the Browse-by-Folders tree (`plx_data::folders`) for a folder drill's page.
+/// `back_to` is the same container-reported caption [`CollectionLike`] describes: the folder page
+/// names the page BACK returns to, never its own opener.
+pub trait FoldersLike: AppLike + Sized {
+    fn folders<'a>(cx: &Cx<'a, Self>) -> plx_data::folders::FoldersView<'a>;
+    fn back_to<'a>(_cx: &Cx<'a, Self>) -> Option<std::borrow::Cow<'a, str>> { None }
+}
+
 /// A host publishing the Metadata layer's read surface borrowed from its concrete store owner
 /// for this frame — the same shape [`PersonLike`] gives Person, for a screen generic over `H`
 /// that needs `plx_data::metadata::MetadataView` rather than the app-concrete `Bridge`.
@@ -1285,6 +1298,16 @@ pub trait LibraryLike: AppLike<Memory = PageMemory> + Sized {
     /// CONTRACT FREEZE: a provided method so every existing host compiles; `AppHost`
     /// (`src/app/bridge.rs`) implements it over the probe.
     fn collections_count(_cx: &Cx<'_, Self>, _section: usize) -> Option<Result<u32, Forbidden>> {
+        None
+    }
+
+    /// Does the directory's section `section` advertise the on-disk folder view (its section
+    /// description carrying a `Directory` entry keyed `folder`)? `None` = not probed yet, which is
+    /// why the control's room is budgeted even while unknown.
+    ///
+    /// CONTRACT FREEZE: a provided method so every existing host compiles; `AppHost`
+    /// (`src/app/bridge.rs`) implements it over the folders store's probe.
+    fn folders_offer(_cx: &Cx<'_, Self>, _section: usize) -> Option<bool> {
         None
     }
 }
@@ -1731,6 +1754,7 @@ pub mod page_id {
     pub const WATCHLIST: ScreenId = ScreenId(25);
     pub const LIBRARY_COLLECTIONS: ScreenId = ScreenId(28);
     pub const LIBRARY_RECOMMENDED: ScreenId = ScreenId(29);
+    pub const LIBRARY_FOLDERS: ScreenId = ScreenId(115);
 }
 
 /// **A screen argument: everything the container needs to mount one screen, and nothing else.**
@@ -1820,6 +1844,12 @@ pub enum AppArg {
     /// [`Self::Library`] by the header's Recommended control (`Listing::Recommended`). P6 builds it.
     /// Dev boot target `library-recommended`.
     LibraryRecommended { section: u32 },
+    /// The library's BY FOLDER page: the server's `folder` listing, pushed over [`Self::Library`]
+    /// by the header's Folders control and drilled one entry per level (each level is its own stack
+    /// entry, so BACK pops one folder). `parent` is the folder id the server's `key` carried — `0`
+    /// for the section root — and `name` is the crumb's word (empty at the root, where the crumb
+    /// names the section). The rows are the `folders` store's, not the browse listing's.
+    LibraryFolders { section: u32, parent: u64, name: String },
     /// The Search screen. A PEER of Home and the Library, not a stacking page: it is reached from
     /// the strip's last pill and BACK from it returns to Home. What it OPENS stacks; it does not.
     Search,
@@ -1850,7 +1880,7 @@ impl AppArg {
     }
 }
 
-pub const ARG_SHAPE: &str = "AppArg{Login,Profiles,Onboard,Home,Library,LibraryCollections{section:u32},LibraryRecommended{section:u32},Search,Watchlist,Player,Content:{Detail{sid:u32,rk:str},Person{sid:u32,key:str,guid:str,name:str,thumb:str},Filmography{sid:u32,key:str},Collection{sid:u32,rk:str,sec:i64,tag:i64,name:str},Catalog{hex:str}},Settings:SettingsPage{Root,Playback,AudioSubtitles,Favourites,Privacy,Legal,About,Document(u8),Preview(u8),ConsentStage(u8),Language,Contribute},FirstRunConsent(u8),LibraryMenu{host:u32,target:{epoch:u32,sid:u32,section:u64},kind:u32,anchor:[u32;4]},\
+pub const ARG_SHAPE: &str = "AppArg{Login,Profiles,Onboard,Home,Library,LibraryCollections{section:u32},LibraryRecommended{section:u32},LibraryFolders{section:u32,parent:u64,name:str},Search,Watchlist,Player,Content:{Detail{sid:u32,rk:str},Person{sid:u32,key:str,guid:str,name:str,thumb:str},Filmography{sid:u32,key:str},Collection{sid:u32,rk:str,sec:i64,tag:i64,name:str},Catalog{hex:str}},Settings:SettingsPage{Root,Playback,AudioSubtitles,Favourites,Privacy,Legal,About,Document(u8),Preview(u8),ConsentStage(u8),Language,Contribute},FirstRunConsent(u8),LibraryMenu{host:u32,target:{epoch:u32,sid:u32,section:u64},kind:u32,anchor:[u32;4]},\
      PlayerOverlay{Tracks(tab:i32),Info,Chapters,More(quality:bool)},\
      AltSources{host:u32,sid:u32,rk:str,anchor:[u32;4]},\
      TracksPanel{page:i32},AboutPanel,PersonBio,CollectionAbout,AccountMenu,\
@@ -1895,6 +1925,8 @@ impl LogicalState for AppArg {
             // 12 and 13, forward of Watchlist's 11 (both are in `ARG_SHAPE`).
             Self::LibraryCollections { section } => { c.u32(0).u32(12).u32(*section); }
             Self::LibraryRecommended { section } => { c.u32(0).u32(13).u32(*section); }
+            // 14, forward of LibraryRecommended's 13 (in `ARG_SHAPE`).
+            Self::LibraryFolders { section, parent, name } => { c.u32(0).u32(14).u32(*section).u64(*parent).str(name); }
             Self::Content(arg) => { c.u32(1); arg.write(c); }
             Self::Settings(page) => { c.u32(2); page.write(c); }
             Self::FirstRunConsent(stage) => { c.u32(3).u8(*stage); }
@@ -1914,6 +1946,8 @@ impl plx_ui::screen::ScreenArg for AppArg {
             AppArg::Home | AppArg::Library | AppArg::Search | AppArg::Watchlist => Chrome::TabBar,
             // The two sub-pages of a library keep the bar, as the Library they are pushed over.
             AppArg::LibraryCollections { .. } | AppArg::LibraryRecommended { .. } => Chrome::TabBar,
+            // …and so does each level of the folder drill, which stands over the same Library.
+            AppArg::LibraryFolders { .. } => Chrome::TabBar,
             AppArg::Login
             | AppArg::Profiles
             | AppArg::Onboard
@@ -1971,6 +2005,9 @@ impl plx_ui::screen::ScreenArg for AppArg {
             // 28 and 29, forward of the catalog page's 27.
             AppArg::LibraryCollections { .. } => page_id::LIBRARY_COLLECTIONS.0,
             AppArg::LibraryRecommended { .. } => page_id::LIBRARY_RECOMMENDED.0,
+            // 115, forward of the Settings family's 114: the By Folder page, one id for every
+            // level (the level is the argument, as a Collection's identity is its argument).
+            AppArg::LibraryFolders { .. } => page_id::LIBRARY_FOLDERS.0,
             AppArg::Search => page_id::SEARCH.0,
             AppArg::Player => 11,
             // The ROOT payload is a boot address, not an identity: one Settings surface and one
@@ -2003,6 +2040,12 @@ impl plx_ui::screen::ScreenArg for AppArg {
         // exists for).
         if let (Self::PlayerOverlay(a), Self::PlayerOverlay(b)) = (self, other) {
             return a.kind.slot() == b.kind.slot();
+        }
+        // **A folder level's identity is the folder itself** — the section and the id its server
+        // `key` carried — never the crumb word drawn over it: two stack entries of one section at
+        // one parent are the one page, and two at different parents are the drill's two levels.
+        if let (Self::LibraryFolders { section: sa, parent: pa, .. }, Self::LibraryFolders { section: sb, parent: pb, .. }) = (self, other) {
+            return sa == sb && pa == pb;
         }
         // …and the same reason `id` collapses the payload: `Settings(Root)` and
         // `Settings(Legal)` are the same SCREEN, so a container must never be able to think it
@@ -2180,6 +2223,12 @@ where
                     .unwrap_or(plx_data::stores::browse::SecKind::Movie);
                 Box::new(crate::library::LibraryScreen::new(entry, id, kind).with_listing(crate::library::Listing::Collections))
             }
+            // The server's By Folder listing for one level of the drill: its rows are the `folders`
+            // store's, and the application opened that level (the store stack and the nav stack move
+            // together), so the mount only names the level to draw.
+            AppArg::LibraryFolders { section, parent, name } => {
+                Box::new(crate::library::FoldersScreen::new(entry, id, *section, *parent, name.clone()))
+            }
             AppArg::Search => {
                 let mut page = crate::search::SearchScreen::new(entry, id);
                 if let PageMemory::Search(memory) = &ret.memory { page.restore(memory); }
@@ -2303,7 +2352,7 @@ pub fn every_surface_arg() -> Vec<AppArg> {
             | AppArg::PlayerOverlay(_)
             | AppArg::Settings(_)
             | AppArg::FirstRunConsent(_) => {}
-            // The eight PAGE variants. Named rather than swept into a `_`, so the exhaustiveness
+            // The nine PAGE variants. Named rather than swept into a `_`, so the exhaustiveness
             // above is real and a new SURFACE variant cannot land in a catch-all.
             AppArg::Login
             | AppArg::Profiles
@@ -2312,6 +2361,7 @@ pub fn every_surface_arg() -> Vec<AppArg> {
             | AppArg::Library
             | AppArg::LibraryCollections { .. }
             | AppArg::LibraryRecommended { .. }
+            | AppArg::LibraryFolders { .. }
             | AppArg::Search
             | AppArg::Watchlist
             | AppArg::Player

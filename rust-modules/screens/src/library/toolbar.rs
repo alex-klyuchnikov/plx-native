@@ -9,6 +9,32 @@ pub(super) const RECOMMENDED: u32 = 9;
 pub(super) const SORTFILTER: u32 = 10;
 /// The Collections page's crumb root ("Films"): OK returns to the page below.
 pub(super) const CRUMB_ROOT: u32 = 11;
+/// The By Folder control: opens the section's on-disk folder browser.
+pub(super) const FOLDERS: u32 = 12;
+
+/// What the By Folder control knows about the section's advertisement
+/// (`LibraryLike::folders_offer`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(super) enum FoldersControl {
+    /// Not probed yet: NOT on the row, but its room in the cluster's budget is kept so the names
+    /// do not repack when the answer lands.
+    #[default]
+    Unknown,
+    /// The server advertises the folder view: the control is on the row.
+    Shown,
+    /// The server does not advertise it (or refused the section description): not on the row.
+    Hidden,
+}
+
+impl FoldersControl {
+    pub(super) fn of(answer: Option<bool>) -> Self {
+        match answer {
+            None => Self::Unknown,
+            Some(true) => Self::Shown,
+            Some(false) => Self::Hidden,
+        }
+    }
+}
 
 /// What the Collections control knows about its count (`LibraryLike::collections_count`).
 ///
@@ -48,7 +74,10 @@ impl LibraryScreen {
         // The Collections page's row: the crumb (its own element, `CRUMB_ROOT`) and, only when the
         // server declares two sorts, the one Sort control. No Collections, Recommended or menu.
         if self.listing == Listing::Collections { return if self.collections_sort { &[SORTFILTER] } else { &[] }; }
-        if matches!(self.collections, CollectionsControl::Count(_)) { &[COLLECTIONS, RECOMMENDED, SORTFILTER] }
+        let folders = matches!(self.folders, FoldersControl::Shown);
+        if matches!(self.collections, CollectionsControl::Count(_)) {
+            if folders { &[COLLECTIONS, FOLDERS, RECOMMENDED, SORTFILTER] } else { &[COLLECTIONS, RECOMMENDED, SORTFILTER] }
+        } else if folders { &[FOLDERS, RECOMMENDED, SORTFILTER] }
         else { &[RECOMMENDED, SORTFILTER] }
     }
 

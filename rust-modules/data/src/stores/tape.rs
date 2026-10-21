@@ -221,6 +221,10 @@ pub fn validate_result(value: &Value) -> Result<(super::StoreId, u32), &'static 
             crate::collection::validate_record(slot, &value["data"])?;
             super::StoreId::Collection
         }
+        Some("folders") => {
+            crate::folders::validate_record(slot, &value["data"])?;
+            super::StoreId::Folders
+        }
         _ => return Err("unsupported content result"),
     };
     Ok((store, slot))
@@ -264,6 +268,9 @@ pub fn validate_admission(value: &Value, client: u32) -> Result<(), &'static str
         }
         Some("collection") if keys(r, &["store","slot","gen","sid","client","job"])
             && r["slot"] == 0 && r["sid"].as_u64().is_some()
+            && r["client"].as_u64().is_some() && r["job"].is_object() => {}
+        Some("folders") if keys(r, &["store","slot","gen","sid","client","job"])
+            && (r["slot"] == 0 || r["slot"] == 1) && r["sid"].as_u64().is_some()
             && r["client"].as_u64().is_some() && r["job"].is_object() => {}
         _ => return Err("unsupported content admission"),
     }

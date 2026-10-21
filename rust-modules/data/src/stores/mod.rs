@@ -70,6 +70,7 @@ pub mod notify;
 pub mod notify_map;
 pub mod person;
 pub mod collection;
+pub mod folders;
 pub(crate) mod deck;
 pub(crate) mod deck_group;
 pub mod page_cache;
@@ -92,6 +93,8 @@ pub struct Stores {
     pub metadata: metadata::MetadataStore,
     pub person: person::PersonStore,
     pub collection: collection::CollectionStore,
+    /// The Browse by Folder tree (`crate::folders`). Appended last, like its `StoreId`.
+    pub folders: folders::FoldersStore,
     pub search: search::SearchStore,
     /// The player's subtitle search & download (`crate::subsearch`). Appended last.
     pub subtitle_search: subsearch::SubSearchStore,
@@ -128,6 +131,7 @@ impl Default for Stores {
             metadata: metadata::MetadataStore::default(),
             person: person::PersonStore::default(),
             collection: collection::CollectionStore::default(),
+            folders: folders::FoldersStore::default(),
             search: search::SearchStore::default(),
             subtitle_search: subsearch::SubSearchStore::default(),
             viewstate: std::cell::RefCell::new(viewstate::ViewStateStore::default()),
@@ -154,6 +158,7 @@ impl Stores {
         self.metadata.share_ledger(ledger);
         self.person.share_ledger(ledger);
         self.collection.share_ledger(ledger);
+        self.folders.share_ledger(ledger);
         self.search.share_ledger(ledger);
         self.viewstate.borrow_mut().share_ledger(ledger);
         self.reconcile.share_ledger(ledger);
@@ -185,6 +190,20 @@ impl Stores {
 
     pub fn collection_view(&self) -> crate::collection::CollectionView<'_> {
         self.collection.view()
+    }
+
+    pub fn folders_run(&mut self, cmd: folders::FoldersCmd) -> bool {
+        self.folders.run(cmd)
+    }
+
+    pub fn folders_pump(&mut self) -> bool { self.folders.pump(&self.landgate) }
+
+    pub fn folders_view(&self) -> crate::folders::FoldersView<'_> {
+        self.folders.view()
+    }
+
+    pub fn folders_offered(&self, sid: plx_plex::plex::ServerId, section: i64) -> Option<bool> {
+        self.folders.offered(sid, section)
     }
 
     pub fn subtitle_search_run(&mut self, cmd: subsearch::SubSearchCmd) -> bool {
@@ -257,6 +276,7 @@ impl Stores {
         let hubs = &mut self.hubs;
         let person = &mut self.person;
         let collection = &mut self.collection;
+        let folders = &mut self.folders;
         let search = &mut self.search;
         let metadata = &mut self.metadata;
         let watchlist = &mut self.watchlist;
@@ -266,6 +286,7 @@ impl Stores {
             &mut |hubcmd| hubs.run_with_directory(hubcmd, directory),
             &mut |cmd| person.run(cmd),
             &mut |cmd| collection.run(cmd),
+            &mut |cmd| folders.run(cmd),
             &mut |cmd| search.run_with_directory(cmd, directory),
             &mut |cmd| metadata.run(cmd),
         )
@@ -281,6 +302,7 @@ impl Stores {
         let hubs = &mut self.hubs;
         let person = &mut self.person;
         let collection = &mut self.collection;
+        let folders = &mut self.folders;
         let search = &mut self.search;
         let metadata = &mut self.metadata;
         let watchlist = &mut self.watchlist;
@@ -290,6 +312,7 @@ impl Stores {
             &mut |hubcmd| hubs.run_with_directory(hubcmd, directory),
             &mut |cmd| person.run(cmd),
             &mut |cmd| collection.run(cmd),
+            &mut |cmd| folders.run(cmd),
             &mut |cmd| search.run_with_directory(cmd, directory),
             &mut |cmd| metadata.run(cmd),
         )
@@ -370,6 +393,7 @@ impl Stores {
         let hubs = &mut self.hubs;
         let person = &mut self.person;
         let collection = &mut self.collection;
+        let folders = &mut self.folders;
         let search = &mut self.search;
         let metadata = &mut self.metadata;
         crate::viewstate::publish_view(
@@ -378,6 +402,7 @@ impl Stores {
             &mut |hubcmd| hubs.run_with_directory(hubcmd, directory),
             &mut |cmd| person.run(cmd),
             &mut |cmd| collection.run(cmd),
+            &mut |cmd| folders.run(cmd),
             &mut |cmd| search.run_with_directory(cmd, directory),
             &mut |cmd| metadata.run(cmd),
         );
@@ -393,6 +418,7 @@ impl Stores {
         let hubs = &mut self.hubs;
         let person = &mut self.person;
         let collection = &mut self.collection;
+        let folders = &mut self.folders;
         let search = &mut self.search;
         let metadata = &mut self.metadata;
         let watchlist = &mut self.watchlist;
@@ -402,6 +428,7 @@ impl Stores {
             &mut |hubcmd| hubs.run_with_directory(hubcmd, directory),
             &mut |cmd| person.run(cmd),
             &mut |cmd| collection.run(cmd),
+            &mut |cmd| folders.run(cmd),
             &mut |cmd| search.run_with_directory(cmd, directory),
             &mut |cmd| metadata.run(cmd),
         ));
@@ -446,6 +473,7 @@ impl Stores {
             StoreId::ViewReconcile => self.reconcile.gen(),
             StoreId::Watchlist => self.watchlist.gen(),
             StoreId::Catalog => self.catalog.gen(),
+            StoreId::Folders => self.folders.gen(),
             // A landing gate slot only: the stop mailbox is not a store and has no generation.
             StoreId::ViewStop => 0,
         }
@@ -486,6 +514,9 @@ impl Stores {
         if let Some(generation) = self.catalog.take_notice() {
             notices.push((StoreId::Catalog, generation));
         }
+        if let Some(generation) = self.folders.take_notice() {
+            notices.push((StoreId::Folders, generation));
+        }
         notices
     }
 }
@@ -513,6 +544,8 @@ pub enum StoreId {
     Watchlist,
     /// Appended for the same reason: the catalog page's discover record (`crate::catalog`).
     Catalog,
+    /// Appended for the same reason: the Browse-by-Folders tree (`crate::folders`).
+    Folders,
 }
 
 /// Route-scoped background work, distinct from a user command. Polling an idle store must not
@@ -538,7 +571,7 @@ impl StoreWork {
 }
 
 impl StoreId {
-    pub const ALL: [StoreId; 12] = [
+    pub const ALL: [StoreId; 13] = [
         StoreId::Browse,
         StoreId::Hubs,
         StoreId::Metadata,
@@ -551,6 +584,7 @@ impl StoreId {
         StoreId::ViewStop,
         StoreId::Watchlist,
         StoreId::Catalog,
+        StoreId::Folders,
     ];
 
     /// The library's ordinal for this store (spec §5.1: the library never names `StoreId`).
@@ -576,6 +610,7 @@ impl StoreId {
             StoreId::ViewStop => "viewstop",
             StoreId::Watchlist => "watchlist",
             StoreId::Catalog => "catalog",
+            StoreId::Folders => "folders",
         }
     }
 }
@@ -590,6 +625,7 @@ pub enum StoreCmd {
     Search(search::SearchCmd),
     Person(person::PersonCmd),
     Collection(collection::CollectionCmd),
+    Folders(folders::FoldersCmd),
     ViewState(viewstate::ViewStateCmd),
     SubtitleSearch(subsearch::SubSearchCmd),
 }
@@ -603,6 +639,7 @@ impl StoreCmd {
             StoreCmd::Search(_) => StoreId::Search,
             StoreCmd::Person(_) => StoreId::Person,
             StoreCmd::Collection(_) => StoreId::Collection,
+            StoreCmd::Folders(_) => StoreId::Folders,
             StoreCmd::ViewState(_) => StoreId::ViewState,
             StoreCmd::SubtitleSearch(_) => StoreId::SubtitleSearch,
         }

@@ -260,6 +260,8 @@
   "browse.collection.kind": "Collection",
   "browse.collection.meta": "{items} · Collection",
   "browse.collection.season_mark": "SAISON {number}",
+  "browse.folders.loading": "Chargement du dossier…",
+  "browse.folders.empty": "Ce dossier est vide",
   "browse.home.hub.on_deck": "À suivre",
   "browse.home.hub.recent_playlists": "Listes de lecture récentes",
   "browse.home.hub.recently_added_in": "Ajouts récents dans {library}",

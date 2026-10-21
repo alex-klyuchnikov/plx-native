@@ -272,6 +272,8 @@
   "browse.collection.kind": "Калекцыя",
   "browse.collection.meta": "{items} · Калекцыя",
   "browse.collection.season_mark": "СЕЗОН {number}",
+  "browse.folders.loading": "Загрузка папкі…",
+  "browse.folders.empty": "Гэтая папка пустая",
   "browse.home.hub.on_deck": "На чарзе",
   "browse.home.hub.recent_playlists": "Нядаўнія плэйлісты",
   "browse.home.hub.recently_added_in": "Нядаўна дададзена ў «{library}»",

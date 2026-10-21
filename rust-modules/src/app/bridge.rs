@@ -105,6 +105,8 @@ pub(crate) struct AppViews<'a> {
     pub(crate) search: plx_data::search::view::SearchView<'a>,
     pub(crate) person: plx_data::person::PersonView<'a>,
     pub(crate) collection: plx_data::collection::CollectionView<'a>,
+    /// The Browse-by-Folders tree (`plx_data::folders`), read by the folder drill's pages.
+    pub(crate) folders: plx_data::folders::FoldersView<'a>,
     /// Stage A of the store-ownership migration (`docs/stores-as-machines.md`): the owner's
     /// borrowed read handle, shaped like [`plx_data::person::PersonView`]. It still reads the
     /// process-wide `metadata` statics underneath — see `plx_data::metadata::MetadataView`'s doc.
@@ -137,7 +139,7 @@ impl Bridge {
         AppViews { auth: self.session.read(), hubs: self.hubs.view(), listing: self.listing.view(),
             directory: self.directory.view(), section_hubs: self.section_hubs.view(),
             search: self.search.view(), metadata: self.stores.metadata_view(),
-            person: self.stores.person_view(), collection: self.stores.collection_view(), subtitle_search: self.stores.subtitle_search_view(), session, beneath: None }
+            person: self.stores.person_view(), collection: self.stores.collection_view(), folders: self.stores.folders_view(), subtitle_search: self.stores.subtitle_search_view(), session, beneath: None }
     }
 }
 
@@ -200,6 +202,16 @@ impl plx_screens::registry::CollectionLike for AppHost {
     }
 }
 
+impl plx_screens::registry::FoldersLike for AppHost {
+    fn folders<'a>(cx: &Cx<'a, Self>) -> plx_data::folders::FoldersView<'a> {
+        cx.views.folders
+    }
+
+    fn back_to<'a>(cx: &Cx<'a, Self>) -> Option<std::borrow::Cow<'a, str>> {
+        super::page_title::of(cx.views.beneath?, &cx.views)
+    }
+}
+
 impl plx_screens::registry::AuthLike for AppHost {
     fn auth<'a>(cx: &Cx<'a, Self>) -> plx_session::auth::SessionRead<'a> { cx.views.auth }
 }
@@ -249,6 +261,11 @@ impl plx_screens::registry::LibraryLike for AppHost {
     fn section_hubs<'a>(cx: &Cx<'a, Self>) -> plx_data::stores::browse::HubsView<'a> { cx.views.section_hubs }
     fn collections_count(cx: &Cx<'_, Self>, section: usize) -> Option<Result<u32, plx_screens::registry::Forbidden>> {
         super::collections_probe::count(cx.views.directory, section, cx.tick.ms)
+    }
+    fn folders_offer(cx: &Cx<'_, Self>, section: usize) -> Option<bool> {
+        let section = cx.views.directory.sections().get(section)?;
+        let sid = section.sid?;
+        cx.views.folders.offered(sid, section.key)
     }
 }
 
@@ -1211,6 +1228,16 @@ impl Bridge {
 
     pub(crate) fn collection_pump(&mut self) -> bool { self.stores.collection_pump() }
 
+    pub(crate) fn folders_run(&mut self, cmd: plx_data::stores::folders::FoldersCmd) -> bool {
+        self.stores.folders_run(cmd)
+    }
+
+    pub(crate) fn folders_pump(&mut self) -> bool { self.stores.folders_pump() }
+
+    pub(crate) fn folders_view(&self) -> plx_data::folders::FoldersView<'_> {
+        self.stores.folders_view()
+    }
+
     pub(crate) fn metadata_mut(&mut self) -> &mut plx_data::stores::metadata::MetadataStore {
         &mut self.stores.metadata
     }
@@ -1352,6 +1379,7 @@ impl Bridge {
     pub(crate) fn held_keys(&self, arg: &AppArg) -> plx_data::stores::HeldKeys {
         match arg {
             arg if arg.is_library_family() => self.stores.library_held_keys(),
+            AppArg::LibraryFolders { .. } => self.stores.folders.held_keys(),
             AppArg::Search => self.stores.search.held_keys(),
             AppArg::Watchlist => self.stores.watchlist.held_keys(),
             AppArg::Content(content @ (ContentArg::Person { .. } | ContentArg::Filmography { .. })) =>
@@ -1660,7 +1688,7 @@ impl Bridge {
             let publication = self.session.publication();
             let cx = parts.cx::<AppHost>(AppViews { auth: publication.read(),
                 hubs: self.hubs.view(), listing: self.listing.view(), directory: self.directory.view(),
-                section_hubs: self.section_hubs.view(), search: self.search.view(), metadata: self.stores.metadata_view(), person: self.stores.person_view(), collection: self.stores.collection_view(), subtitle_search: self.stores.subtitle_search_view(), session: &self.playback, beneath: None,
+                section_hubs: self.section_hubs.view(), search: self.search.view(), metadata: self.stores.metadata_view(), person: self.stores.person_view(), collection: self.stores.collection_view(), folders: self.stores.folders_view(), subtitle_search: self.stores.subtitle_search_view(), session: &self.playback, beneath: None,
             }, &self.measure);
             let handled = self.session.step(event, &cx, fx);
             // #132: the owner logs nothing, and the Profiles screen cannot see a read-out that
@@ -1726,6 +1754,10 @@ impl Bridge {
             }
             AppMsg::Store(StoreCmd::Collection(command)) => {
                 self.collection_run(command.clone());
+                return Handled::Yes;
+            }
+            AppMsg::Store(StoreCmd::Folders(command)) => {
+                self.folders_run(command.clone());
                 return Handled::Yes;
             }
             AppMsg::Store(StoreCmd::SubtitleSearch(command)) => {
@@ -1842,7 +1874,7 @@ impl Rig<AppHost> for Bridge {
                 hubs: self.hubs.view(),
                 listing: self.listing.view(),
                 directory: self.directory.view(),
-                section_hubs: self.section_hubs.view(), search: self.search.view(), metadata: self.stores.metadata_view(), person: self.stores.person_view(), collection: self.stores.collection_view(), subtitle_search: self.stores.subtitle_search_view(), session: &self.playback, beneath: None,
+                section_hubs: self.section_hubs.view(), search: self.search.view(), metadata: self.stores.metadata_view(), person: self.stores.person_view(), collection: self.stores.collection_view(), folders: self.stores.folders_view(), subtitle_search: self.stores.subtitle_search_view(), session: &self.playback, beneath: None,
             },
             measure: &self.measure,
         }
@@ -2064,6 +2096,7 @@ fn step_store(cmd: &StoreCmd, _cx: &Cx<'_, AppHost>, _fx: &mut Effects<'_, AppHo
         StoreCmd::Search(_) => unreachable!("Search is stepped by Bridge with its Browse directory"),
         StoreCmd::Person(_) => unreachable!("Person is stepped by Bridge's owned store"),
         StoreCmd::Collection(_) => unreachable!("Collection is stepped by Bridge's owned store"),
+        StoreCmd::Folders(_) => unreachable!("Folders is stepped by Bridge's owned store"),
         StoreCmd::ViewState(_) => unreachable!("ViewState is stepped by Bridge with its Browse owner"),
         StoreCmd::SubtitleSearch(_) => unreachable!("SubtitleSearch is stepped by Bridge's owned store"),
     }
@@ -2254,6 +2287,16 @@ fn frame_ingest(
     // (`collections_probe::warm`, one request at a time on one worker).
     if super::collections_probe::warm_due(browse_changed) {
         super::collections_probe::warm(rig.directory.view(), tick.ms);
+    }
+    // The folder-view advertisement asked for the current library as soon as the directory is
+    // known, so the By Folder control is usually decided before its page is opened. The store
+    // dedupes: one probe per section per client, and asking again is free.
+    if let Some(index) = rig.directory.view().current() {
+        if let Some(section) = rig.directory.view().sections().get(index) {
+            if let Some(sid) = section.sid {
+                rig.stores.folders_run(plx_data::stores::folders::FoldersCmd::Probe { sid, section: section.key });
+            }
+        }
     }
     rig.capture_chrome(d);
     rig.deliver_home_commands(d);

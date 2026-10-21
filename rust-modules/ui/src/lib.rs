@@ -32,6 +32,7 @@ pub mod card_motion_metrics;
 pub mod card_probe; // `plxnative-focusx`: the focused card's drawn rect/index/art of every Shelf and Grid
 pub mod containers; // RESTRUCTURE (spec §6.2): Navigation = TabContainer → NavStack → ModalStack, the transitions, the host fold
 pub mod collection_tile; // the neutral tile a thumb-less collection draws on every surface
+pub mod folder_tile; // the neutral tile a folder row draws in the Browse by Folders listing
 pub mod consts;
 pub mod decision_alert;
 pub mod decision_prompt;

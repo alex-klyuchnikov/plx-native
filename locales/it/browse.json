@@ -260,6 +260,8 @@
   "browse.collection.kind": "Raccolta",
   "browse.collection.meta": "{items} · Raccolta",
   "browse.collection.season_mark": "STAGIONE {number}",
+  "browse.folders.loading": "Caricamento cartella…",
+  "browse.folders.empty": "Questa cartella è vuota",
   "browse.home.hub.on_deck": "In coda",
   "browse.home.hub.recent_playlists": "Playlist recenti",
   "browse.home.hub.recently_added_in": "Aggiunti di recente in {library}",

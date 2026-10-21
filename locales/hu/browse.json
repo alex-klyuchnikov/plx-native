@@ -248,6 +248,8 @@
   "browse.collection.kind": "Gyűjtemény",
   "browse.collection.meta": "{items} · Gyűjtemény",
   "browse.collection.season_mark": "{number}. ÉVAD",
+  "browse.folders.loading": "Mappa betöltése…",
+  "browse.folders.empty": "Ez a mappa üres",
   "browse.home.hub.on_deck": "Soron következő",
   "browse.home.hub.recent_playlists": "Legutóbbi lejátszási listák",
   "browse.home.hub.recently_added_in": "Nemrég hozzáadva – {library}",

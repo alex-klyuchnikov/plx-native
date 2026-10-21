@@ -497,6 +497,7 @@ impl ViewStateState {
     hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> crate::stores::StoreOutcome,
     person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
     collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+    folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
     search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
     metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
 ) -> bool {
@@ -517,7 +518,7 @@ impl ViewStateState {
     // them, which is what [`pump`] finishes the job with.
     let change = ViewChange { sid, rk: rk.to_string(), scope: scope.clone(), fact: w.fact() };
     let seq = self.ledger.record(&change.at(), change.edit());
-    publish_view(change, browse, hubs, person, collection, search, metadata);
+    publish_view(change, browse, hubs, person, collection, folders, search, metadata);
     self.coalesce(sid, rk, w);
     let id = self.mint_request_id();
     self.queue.push(Req {
@@ -560,6 +561,7 @@ pub fn publish_view(
     hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> crate::stores::StoreOutcome,
     person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
     collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+    folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
     search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
     metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
 ) {
@@ -575,7 +577,8 @@ pub fn publish_view(
         metadata(crate::stores::metadata::MetadataCmd::ApplyView { at: at.clone(), edit });
         search(crate::stores::search::SearchCmd::ApplyView { at: at.clone(), edit });
         person(crate::stores::person::PersonCmd::ApplyView { at: at.clone(), edit });
-        collection(crate::stores::collection::CollectionCmd::ApplyView { at, edit });
+        collection(crate::stores::collection::CollectionCmd::ApplyView { at: at.clone(), edit });
+        folders(crate::stores::folders::FoldersCmd::ApplyView { at, edit });
     }
     plx_machine::idle::invalidate(); // the tick/veil/bar just changed with no spring behind it
 }
@@ -699,6 +702,7 @@ pub fn pump_with_gate(
     hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> crate::stores::StoreOutcome,
     person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
     collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+    folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
     search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
     metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
 ) -> crate::stores::EndpointRefreshSet {
@@ -754,7 +758,7 @@ pub fn pump_with_gate(
             let change = ViewChange { sid: *osid, rk: ork.clone(), scope, fact: r.w.fact() };
             // the server took this copy already, so its number is the landing's
             self.ledger.record(&change.at(), change.edit());
-            publish_view(change, browse, hubs, person, collection, search, metadata);
+            publish_view(change, browse, hubs, person, collection, folders, search, metadata);
         }
         // The refresh is owed whether or not the server took it: on success it is the reconcile,
         // and on failure it is what puts the optimistic edit back to whatever the server really
@@ -803,11 +807,12 @@ pub fn pump(
     hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> crate::stores::StoreOutcome,
     person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
     collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+    folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
     search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
     metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
 ) -> crate::stores::EndpointRefreshSet {
     self.pump_with_gate(adapter, plx_machine::landgate::fixture_gate(), browse, hubs, person, collection,
-        search, metadata)
+        folders, search, metadata)
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1067,13 +1072,14 @@ pub fn run(
     hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> crate::stores::StoreOutcome,
     person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
     collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+    folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
     search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
     metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
 ) -> bool {
     use crate::stores::viewstate::ViewStateCmd;
     match cmd {
         ViewStateCmd::Request { sid, rk, write, scope, guid } => {
-            self.request(adapter, sid, &rk, write, scope, &guid, browse, hubs, person, collection, search, metadata)
+            self.request(adapter, sid, &rk, write, scope, &guid, browse, hubs, person, collection, folders, search, metadata)
         }
         ViewStateCmd::Reset => {
             self.reset();
@@ -1339,6 +1345,7 @@ mod tests {
             &mut |_| false,
             &mut |_| false,
             &mut |_| false,
+            &mut |_| false,
         );
 
         assert!(matches!(&hubs[0], crate::stores::hubs::HubsCmd::ApplyView {
@@ -1557,7 +1564,7 @@ mod tests {
         let mut hubs = Vec::new();
         let _ = state.pump_with_gate(&adapter, &gate, &mut |_| false,
             &mut |cmd| { hubs.push(cmd); crate::stores::StoreOutcome::default() },
-            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
+            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
         assert!(state.sent.is_none(), "the answer the pump owed must be taken by the pump that asked");
         assert!(matches!(hubs.first(), Some(crate::stores::hubs::HubsCmd::RefetchHubs)),
             "and the refresh it owes follows on the same pump");
@@ -1589,7 +1596,7 @@ mod tests {
         });
         let _ = state.pump_with_gate(&adapter, &gate, &mut |_| false,
             &mut |_| crate::stores::StoreOutcome::default(),
-            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
+            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
         assert!(state.sent.is_none(), "the write on the wire was answered by ITS completion");
         join.join().unwrap();
     }
@@ -1608,7 +1615,7 @@ mod tests {
         let mut hubs = Vec::new();
         let _ = state.pump(&adapter, &mut |_| true,
             &mut |cmd| { hubs.push(cmd); crate::stores::StoreOutcome::default() },
-            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
+            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
         hubs
     }
 
@@ -1784,6 +1791,7 @@ mod tests {
         publish_view(ViewChange { sid: SRV_A, rk: "4".into(), scope: Scope::Leaf, fact: ViewFact::Watched(true) },
             &mut |_| false,
             &mut |_cmd| crate::stores::StoreOutcome::default(), &mut |_| false, &mut |_| false, &mut |_| false,
+            &mut |_| false,
             &mut |cmd| metadata_store.run(cmd));
         assert!(
             !metadata_store.view().current().unwrap().watched,
@@ -1793,6 +1801,7 @@ mod tests {
         publish_view(ViewChange { sid: SRV_B, rk: "4".into(), scope: Scope::Leaf, fact: ViewFact::Watched(true) },
             &mut |_| false,
             &mut |_cmd| crate::stores::StoreOutcome::default(), &mut |_| false, &mut |_| false, &mut |_| false,
+            &mut |_| false,
             &mut |cmd| metadata_store.run(cmd));
         assert!(metadata_store.view().current().unwrap().watched);
         assert_eq!(
@@ -1805,32 +1814,34 @@ mod tests {
     }
 
     /// **Which stores a change reaches.** The server's word (`Facts`) and a stop's position
-    /// (`Offset`) reach the person, collection, search and metadata owners, each with the edit the
-    /// change names; leaving Continue Watching reaches none of the four (a result tile, a filmography
-    /// row and a Detail tile have no deck).
+    /// (`Offset`) reach the person, collection, folders, search and metadata owners, each with the
+    /// edit the change names; leaving Continue Watching reaches none of the five (a result tile, a
+    /// filmography row, a folder-listing file card and a Detail tile have no deck).
     #[test]
-    fn publish_view_hands_facts_and_offset_to_the_four_tile_stores_and_a_deck_removal_to_none() {
-        use crate::stores::{collection::CollectionCmd, metadata::MetadataCmd, person::PersonCmd, search::SearchCmd};
+    fn publish_view_hands_facts_and_offset_to_the_five_tile_stores_and_a_deck_removal_to_none() {
+        use crate::stores::{collection::CollectionCmd, folders::FoldersCmd, metadata::MetadataCmd, person::PersonCmd, search::SearchCmd};
         let reached = |fact| {
-            let (mut p, mut c, mut s, mut m) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            let (mut p, mut c, mut f, mut s, mut m) =
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
             publish_view(ViewChange { sid: SRV_A, rk: "4".into(), scope: Scope::Leaf, fact },
                 &mut |_| false,
                 &mut |_cmd| crate::stores::StoreOutcome::default(),
                 &mut |cmd| { if let PersonCmd::ApplyView { edit, .. } = cmd { p.push(edit) } false },
                 &mut |cmd| { if let CollectionCmd::ApplyView { edit, .. } = cmd { c.push(edit) } false },
+                &mut |cmd| { if let FoldersCmd::ApplyView { edit, .. } = cmd { f.push(edit) } false },
                 &mut |cmd| { if let SearchCmd::ApplyView { edit, .. } = cmd { s.push(edit) } false },
                 &mut |cmd| { if let MetadataCmd::ApplyView { edit, .. } = cmd { m.push(edit) } false });
-            (p, c, s, m)
+            (p, c, f, s, m)
         };
         let facts = ViewFact::Facts { watched: true, unwatched: false, resume_ms: 0 };
         let edit = ViewEdit::Facts { watched: true, unwatched: false, resume_ms: 0 };
-        assert_eq!(reached(facts), (vec![edit], vec![edit], vec![edit], vec![edit]), "Facts reach all four");
+        assert_eq!(reached(facts), (vec![edit], vec![edit], vec![edit], vec![edit], vec![edit]), "Facts reach all five");
         let offset = ViewFact::Offset { ms: 42, dur_ms: 1_000_000 };
         let edit = ViewEdit::Offset { ms: 42 };
-        assert_eq!(reached(offset), (vec![edit], vec![edit], vec![edit], vec![edit]), "Offset reaches all four");
+        assert_eq!(reached(offset), (vec![edit], vec![edit], vec![edit], vec![edit], vec![edit]), "Offset reaches all five");
         assert_eq!(
             reached(ViewFact::LeftDeck),
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new()),
             "a deck removal reaches none of them"
         );
     }
@@ -1872,6 +1883,7 @@ mod tests {
 
         let _outcome = state.pump(&adapter, &mut |_| false,
             &mut |_cmd| crate::stores::StoreOutcome::default(), &mut |_| false, &mut |_| false, &mut |_| false,
+            &mut |_| false,
             &mut |cmd| metadata_store.run(cmd));
 
         assert!(
@@ -1908,7 +1920,7 @@ mod tests {
         *adapter.mail.lock().unwrap_or_else(|e| e.into_inner()) =
             Some(Completion { id, done: Done { ok, also: Vec::new() } });
         let _ = state.pump(&adapter, &mut |_| false, &mut |_cmd| crate::stores::StoreOutcome::default(),
-            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
+            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
         (state.ledger.clone(), read_stamp)
     }
 
@@ -1964,7 +1976,7 @@ mod tests {
         *adapter.mail.lock().unwrap_or_else(|e| e.into_inner()) =
             Some(Completion { id, done: Done { ok: true, also: Vec::new() } });
         let _ = state.pump(&adapter, &mut |_| false, &mut |_cmd| crate::stores::StoreOutcome::default(),
-            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
+            &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false, &mut |_| false);
         assert!(state.ledger.since(stamp).is_empty());
     }
 
@@ -1999,7 +2011,7 @@ mod tests {
 
         let _ = state.pump(&adapter, &mut |_| false,
             &mut |_| crate::stores::StoreOutcome::default(), &mut |_| false, &mut |_| false, &mut |_| false,
-            &mut |_| false);
+            &mut |_| false, &mut |_| false);
 
         assert_eq!(state.sent.as_ref().map(|request| request.id), Some(second_id),
             "a stale or mismatched completion cannot satisfy the current in-flight identity");

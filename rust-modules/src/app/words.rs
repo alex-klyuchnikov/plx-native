@@ -29,6 +29,9 @@ pub(crate) fn route_word(route: &AppArg) -> &'static str {
         AppArg::Profiles => "profiles",
         AppArg::Onboard => "onboard",
         AppArg::Library | AppArg::LibraryCollections { .. } | AppArg::LibraryRecommended { .. } => "library",
+        // The folder drill answers its own word at every level: an fps scene for the drill is not a
+        // scene for the grid, and the manifest selects on it.
+        AppArg::LibraryFolders { .. } => "folders",
         AppArg::Content(ContentArg::Detail { .. }) => "detail",
         // The filmography sheet answers `word::PERSON` too (`FilmographyScreen::name`): the test
         // manifest intentionally records that opaque modal as `route=person`.
@@ -70,7 +73,7 @@ pub(crate) fn route_word(route: &AppArg) -> &'static str {
 /// holds one and asks about it. Its two readers are this module's word derivation and
 /// `app::bridge`'s argument tests, which used to keep a second copy of the same list.
 #[cfg(test)]
-pub(crate) fn every_route() -> [AppArg; 14] {
+pub(crate) fn every_route() -> [AppArg; 15] {
     use plx_screens::registry::ContentArg;
     let sid = plx_plex::plex::ServerId::UNSET;
     [
@@ -83,6 +86,8 @@ pub(crate) fn every_route() -> [AppArg; 14] {
         // tab bar's chrome, and a list without them is how the strip they wear went unpublished.
         AppArg::LibraryCollections { section: 0 },
         AppArg::LibraryRecommended { section: 0 },
+        // …and the folder drill's root level, which answers its own word.
+        AppArg::LibraryFolders { section: 0, parent: 0, name: String::new() },
         AppArg::Content(ContentArg::Detail { sid, rk: String::new() }),
         AppArg::Content(ContentArg::Person {
             sid, key: String::new(), guid: String::new(), name: String::new(), thumb: String::new(),

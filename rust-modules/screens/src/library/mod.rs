@@ -4,6 +4,8 @@ mod bookmark;
 mod layout;
 mod recommended;
 pub use recommended::RecommendedScreen;
+mod folders;
+pub use folders::FoldersScreen;
 mod lookahead;
 mod parts;
 mod rail;
@@ -62,7 +64,7 @@ use plx_ui::{Rect, Spring};
 use plx_ui::xfade::Xfade;
 use identity::{KeyRegistry, KeyRegion, region_of_elem};
 use layout::{Layout, Block, CONTENT_TOP};
-use toolbar::{CollectionsControl, COLLECTIONS, CRUMB_ROOT, RECOMMENDED, SORTFILTER};
+use toolbar::{CollectionsControl, FoldersControl, COLLECTIONS, CRUMB_ROOT, FOLDERS, RECOMMENDED, SORTFILTER};
 #[cfg(test)]
 use layout::COLS;
 use parts::{GridPart, RailPart, GRID_GROUP, RAIL_GROUP};
@@ -180,6 +182,9 @@ pub struct LibraryScreen {
     /// `LibraryLike::collections_count` for the library on view each `sync`): the same library's
     /// last count is held across a read of nothing, another library's never is.
     collections: CollectionsControl,
+    /// The By Folder control's advertisement state (`LibraryLike::folders_offer` for the library
+    /// on view, read each `sync`).
+    folders: FoldersControl,
     /// The Collections page's header carries the Sort control (the server declared two or more
     /// sorts for the collections listing). A projection of `header`, read by `toolbar_elems`.
     collections_sort: bool,
@@ -277,7 +282,7 @@ impl LibraryScreen {
                 MasterDetailGroups { master: RAIL_GROUP, detail: GRID_GROUP },
                 MasterDetailPolicy::new(MasterSide::Right, Follow::Live), Regions,
             ),
-            libraries: Vec::new(), folded: Vec::new(), header: plx_ui::page_header::RowCache::new(), header_capsules: plx_ui::widgets::TabStrip::new(), header_pop: plx_ui::widgets::CtlPop::new(), header_swap: plx_ui::page_header::HeaderSwap::new(), header_of: None, collections: CollectionsControl::Unknown, collections_sort: false, collections_asked: None,
+            libraries: Vec::new(), folded: Vec::new(), header: plx_ui::page_header::RowCache::new(), header_capsules: plx_ui::widgets::TabStrip::new(), header_pop: plx_ui::widgets::CtlPop::new(), header_swap: plx_ui::page_header::HeaderSwap::new(), header_of: None, collections: CollectionsControl::Unknown, folders: FoldersControl::Unknown, collections_sort: false, collections_asked: None,
             type_before_collections: None, unfiltered: None,
             switched: false, enter_remembered: false, section: None, epoch: None, query: None, grid_reset_pending: false,
             layout, target_layout: layout,
@@ -325,6 +330,7 @@ impl LibraryScreen {
     pub fn probe_header_stops(&self) -> Vec<(&'static str, u32)> {
         self.header_elems().into_iter().map(|elem| (match elem {
             toolbar::COLLECTIONS => "collections",
+            toolbar::FOLDERS => "folders",
             toolbar::RECOMMENDED => "recommended",
             toolbar::SORTFILTER => "sort",
             toolbar::CRUMB_ROOT => "crumb",
@@ -862,6 +868,13 @@ impl LibraryScreen {
         fx.push(Fx::App(AppFx::Library(LibraryReq::OpenListing { listing, section })));
     }
 
+    /// Push this library's folder-browser root. The page opens its own level on Enter; this names
+    /// only the navigation entry.
+    pub(super) fn open_folders<H: LibraryLike>(&mut self, _cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
+        let Some(section) = self.section.as_ref().and_then(|section| u32::try_from(section.key).ok()) else { return };
+        fx.push(Fx::App(AppFx::Library(LibraryReq::OpenFolder { section, parent: 0, name: String::new() })));
+    }
+
     /// Stage `kind` as the section's listing type, the edit the Sort & Filter menu's Show rows
     /// deliver. False when the listing has no address yet.
     fn request_type<H: LibraryLike>(&mut self, kind: plx_data::browse::LibraryType, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) -> bool {
@@ -919,6 +932,8 @@ impl LibraryScreen {
             COLLECTIONS => { self.open_listing(Listing::Collections, cx, fx); return Handled::Yes; }
             // The Recommended page lists the server's hubs for the library.
             RECOMMENDED => { self.open_listing(Listing::Recommended, cx, fx); return Handled::Yes; }
+            // The By Folder page browses the library's on-disk folder tree.
+            FOLDERS => { self.open_folders(cx, fx); return Handled::Yes; }
             // The crumb's root link: back to the library page below.
             CRUMB_ROOT if self.listing == Listing::Collections => {
                 fx.push(Fx::App(AppFx::Content(crate::registry::ContentReq::Back)));

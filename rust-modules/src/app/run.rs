@@ -2536,6 +2536,7 @@ pub(crate) unsafe fn update(app: &mut App, fr: &mut Frame) {
         super::bridge::execute_endpoint_outcomes(&mut app.pages, upgrades);
         app.bridge.person_pump();
         app.bridge.collection_pump();
+        app.bridge.folders_pump();
         // …and the Detail pages whose item, season or show it just spoke about: re-read from the
         // server's word, wherever on the stack they are (`content::reconcile_details`).
         let landed = app.bridge.take_landed_views();
@@ -2920,6 +2921,9 @@ pub(crate) unsafe fn report(app: &mut App, fr: &mut Frame) {
                 // already names as `route=`, and the panel's own fields ride on `content` like
                 // every other surface's — `bridge::content_probe`.)
                 AppArg::Library | AppArg::LibraryCollections { .. } | AppArg::LibraryRecommended { .. } => crate::focusprobe::Screen::Library,
+                // The folder drill fingerprints through the library's grammar: its cursor is a card
+                // cursor over `content`, exactly as the grid's is.
+                AppArg::LibraryFolders { .. } => crate::focusprobe::Screen::Library,
                 AppArg::Content(plx_screens::registry::ContentArg::Detail { .. }) =>
                     crate::focusprobe::Screen::Detail,
                 AppArg::Content(plx_screens::registry::ContentArg::Person { .. }

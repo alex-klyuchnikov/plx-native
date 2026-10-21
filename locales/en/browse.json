@@ -2169,6 +2169,14 @@
     },
     "description": "Upper-case mark drawn on a season poster inside a collection"
   },
+  "browse.folders.loading": {
+    "value": "Loading folder.",
+    "description": "Status caption while a folder listing is being read"
+  },
+  "browse.folders.empty": {
+    "value": "Nothing in this folder",
+    "description": "Status caption for a folder the server reports as empty"
+  },
   "browse.home.hub.on_deck": {
     "value": "On Deck",
     "description": "Home shelf heading, client-localized override for PMS hubIdentifier home.ondeck"

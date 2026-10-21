@@ -260,6 +260,8 @@
   "browse.collection.kind": "Coleção",
   "browse.collection.meta": "{items} · Coleção",
   "browse.collection.season_mark": "TEMPORADA {number}",
+  "browse.folders.loading": "A carregar a pasta…",
+  "browse.folders.empty": "Esta pasta está vazia",
   "browse.home.hub.on_deck": "Para continuar",
   "browse.home.hub.recent_playlists": "Listas de reprodução recentes",
   "browse.home.hub.recently_added_in": "Adicionados recentemente em {library}",

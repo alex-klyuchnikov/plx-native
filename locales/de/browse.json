@@ -248,6 +248,8 @@
   "browse.collection.kind": "Sammlung",
   "browse.collection.meta": "{items} · Sammlung",
   "browse.collection.season_mark": "STAFFEL {number}",
+  "browse.folders.loading": "Ordner wird geladen …",
+  "browse.folders.empty": "Dieser Ordner ist leer",
   "browse.home.hub.on_deck": "Als Nächstes",
   "browse.home.hub.recent_playlists": "Neue Playlists",
   "browse.home.hub.recently_added_in": "Kürzlich hinzugefügt in {library}",

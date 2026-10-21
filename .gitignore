@@ -30,6 +30,10 @@ sysroot/
 # local dev overrides (real PMS host + X-Plex-Token)
 local.env
 src/config.local.h
+# Raw live-server probe dumps (the docs/pms-api.md verification workflow). The responses carry the
+# owner's plex.tv identity, machineIdentifier and library paths; only the distilled shapes belong
+# in the tracked docs. Never `git add` this directory.
+probes/
 # ...and every agent worktree carries its OWN copy of that file, with the real token in it.
 # These were held out of the index by .git/info/exclude, which is local-only: it does not survive
 # a clone, is not reviewable, and does not apply in a fresh worktree or a CI checkout. On a repo

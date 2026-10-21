@@ -171,6 +171,41 @@ impl Client {
         self.get_json(&query.build())
     }
 
+    /// GET /library/sections/{key} — the section's own description: its browse-view menu as a
+    /// `Directory[]` of relative keys (`all`, `unwatched`, `genre`, …, and the special `folder`
+    /// entry that means this section offers Browse by Folder). The app reads only the `folder`
+    /// entry's presence to decide whether to offer the Folders control; it never synthesizes the
+    /// rest of the menu from this list (`docs/pms-api.md` §2b: the other keys are canned queries
+    /// over `/all` the client already builds). → `.directory[]`.
+    pub fn section_views(&self, section_key: i64) -> Option<MediaContainer> {
+        self.get_json(&format!("/library/sections/{section_key}"))
+    }
+
+    /// GET /library/sections/{key}/folder[?parent=…] — one level of the section's on-disk folder
+    /// tree, paged. `parent` is the id the PARENT level's folder row carried in its own `key`
+    /// (`/library/sections/{k}/folder?parent=<id>`); `None` is the section root. The client passes
+    /// the id straight through and never parses or re-derives it. → `.metadata[]`, where a row is a
+    /// SUB-FOLDER iff it carries only `{key, title}` (empty `ratingKey`/`type`, its `key` a
+    /// `…/folder?parent=` drill URL) and is an ordinary playable item otherwise (a full `Metadata`
+    /// row identical in shape to the `/all` grid, so the card grid and poster scheduler need no
+    /// branch for it). Folders sort before files; the container's `totalSize` counts both.
+    /// Verified live 2026-10-21 against PMS 1.43.4 (docs/pms-api.md §2b): root returns 12 folder
+    /// rows + 63 full movie rows (`totalSize` 75), and paging headers are honored.
+    pub fn section_folders(
+        &self,
+        section_key: i64,
+        parent: Option<i64>,
+        start: i64,
+        size: i64,
+    ) -> Option<MediaContainer> {
+        let mut query = QueryBuilder::new(format!("/library/sections/{section_key}/folder"));
+        if let Some(parent) = parent {
+            query = query.int("parent", parent);
+        }
+        let path = paged_path(&query.build(), PageReq::window(start, size));
+        self.get_json(&path)
+    }
+
     /// A SHOW's language settings (its Advanced dialog in Plex Web: `audioLanguage`,
     /// `subtitleLanguage`, `subtitleMode`) — see [`crate::plex::ShowLangPrefs`]. None when they
     /// cannot be read.

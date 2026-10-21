@@ -254,6 +254,76 @@ class LibraryRail(unittest.TestCase):
             server.server_close()
 
 
+class BrowseByFolder(unittest.TestCase):
+    """The folder-view wire shape, pinned to the live probe (docs/pms-api.md §2b, 2026-10-21):
+    the section advertises the `folder` view; a folder listing is one `Metadata[]` whose rows are
+    either minimal `{key, title}` sub-folders (folders first) or ordinary full items; the drill id
+    comes back exactly as the caller read it out of the parent row's `key`; paging works."""
+
+    def test_section_advertises_the_folder_view(self):
+        pms = MockPms(Library())
+        views = get(pms, "/library/sections/1")["Directory"]
+        self.assertIn({"key": "folder", "title": "By Folder"}, views)
+
+    def test_root_mixes_folders_first_then_loose_files(self):
+        pms = MockPms(Library())
+        mc = get(pms, "/library/sections/1/folder")
+        rows = mc["Metadata"]
+        folders = [r for r in rows if not r.get("ratingKey")]
+        files = [r for r in rows if r.get("ratingKey")]
+        self.assertEqual([f["title"] for f in folders], ["Alpha Folder", "Beta Folder"])
+        self.assertTrue(all(set(f) == {"key", "title"} for f in folders))
+        self.assertTrue(all(f["key"].startswith("/library/sections/1/folder?parent=")
+                            for f in folders))
+        self.assertTrue(all(r["type"] == "movie" for r in files))
+        self.assertEqual(rows[:len(folders)], folders, "folders must sort before files")
+        self.assertEqual(len(rows), 14)  # 2 folders + 12 loose of 48
+
+    def test_drill_walks_the_tree_and_every_item_appears_once(self):
+        pms = MockPms(Library())
+        root = get(pms, "/library/sections/1/folder")["Metadata"]
+        keys = {r["key"]: r["title"] for r in root if not r.get("ratingKey")}
+        self.assertEqual(sorted(keys.values()), ["Alpha Folder", "Beta Folder"])
+        seen = [r["ratingKey"] for r in root if r.get("ratingKey")]
+        stack = list(keys)
+        while stack:
+            key = stack.pop()
+            page = get(pms, key)
+            rows = page["Metadata"]
+            folders = [r for r in rows if not r.get("ratingKey")]
+            for f in folders:
+                self.assertTrue(f["key"].startswith("/library/sections/1/folder?parent="))
+                stack.append(f["key"])
+            seen += [r["ratingKey"] for r in rows if r.get("ratingKey")]
+        # The tree covers the section exactly once: 48 movies, no duplicates, no gaps.
+        self.assertEqual(sorted(seen), sorted(lib_items(pms, "movie")))
+
+    def test_drill_pages_like_any_other_listing(self):
+        pms = MockPms(Library())
+        page = get(pms, "/library/sections/1/folder?X-Plex-Container-Start=0&X-Plex-Container-Size=5")
+        self.assertEqual(page["size"], 5)
+        self.assertEqual(page["totalSize"], 14)
+        self.assertEqual(page["offset"], 0)
+
+    def test_unknown_parent_answers_empty_not_an_error(self):
+        pms = MockPms(Library())
+        self.assertEqual(get(pms, "/library/sections/1/folder?parent=999999")["Metadata"], [])
+
+    def test_show_section_tree(self):
+        pms = MockPms(Library())
+        rows = get(pms, "/library/sections/2/folder")["Metadata"]
+        folders = [r for r in rows if not r.get("ratingKey")]
+        files = [r for r in rows if r.get("ratingKey")]
+        self.assertEqual([f["title"] for f in folders], ["Alpha Folder", "Beta Folder"])
+        self.assertTrue(all(r["type"] == "show" for r in files))
+        self.assertEqual(len(folders) + len(files), 5)  # 2 folders + 3 loose of 6
+
+
+def lib_items(pms, kind):
+    return [it["ratingKey"] for it in pms.lib.items.values()
+            if it["type"] == kind and it["librarySectionID"] == (1 if kind == "movie" else 2)]
+
+
 class ResumeFixture(unittest.TestCase):
     """`--resume-fixture`: a show that has been watched up to S12E14, and one that has not."""
 

@@ -1094,6 +1094,53 @@ class Library:
             return it.get("viewCount", 0) > 0
         return it.get("leafCount", 0) > 0 and it.get("viewedLeafCount", 0) >= it["leafCount"]
 
+    # Browse by Folder (docs/pms-api.md §2b): a deterministic synthetic tree over a section's
+    # ordinary items, DERIVED from them rather than stored, so the default library's `__dict__`
+    # (hashed by test_default_generated_data_is_stable) is untouched. A real PMS lists the section's
+    # whole on-disk tree; this one splits the section's items into four buckets so every shape the
+    # app must render is reachable: a root with two sub-folders AND loose files, one sub-folder that
+    # itself holds a nested sub-folder plus files, and a leaf folder of only files. Folders sort
+    # before files, as the live server orders them. A folder row is exactly `{key, title}` (no
+    # ratingKey, no type, no thumb) and its drill id is a fixed 9xxxxx block no generated item
+    # reaches, so the app can never confuse the two row kinds by id.
+    FOLDER_ID_BASE = 900000
+
+    def folder_listing(self, section_key, parent):
+        """The rows for one level of the section's folder tree, or None for a section the mock has
+        no tree for. `parent` is the id the caller read out of the parent level's folder row `key`
+        (`None` = the section root), passed straight back exactly as a real PMS takes it."""
+        kind = {"1": "movie", "2": "show"}.get(section_key)
+        if kind is None:
+            return None
+        if isinstance(parent, str):
+            parent = int(parent) if parent.isdigit() else None
+        items = sorted((it for it in self.items.values()
+                        if it["type"] == kind and it["librarySectionID"] == int(section_key)),
+                       key=lambda it: it["titleSort"])
+        n = len(items)
+        q = n // 4
+        deep, beta, alpha, loose = items[0:q], items[q:2 * q], items[2 * q:3 * q], items[3 * q:]
+        base = self.FOLDER_ID_BASE + int(section_key) * 10
+        a_id, b_id, d_id = base + 1, base + 2, base + 3
+
+        def frow(fid, title):
+            return {"key": f"/library/sections/{section_key}/folder?parent={fid}", "title": title}
+
+        if parent is None:
+            rows = []
+            if alpha:
+                rows.append(frow(a_id, "Alpha Folder"))
+            if beta or deep:
+                rows.append(frow(b_id, "Beta Folder"))
+            return rows + loose
+        if parent == a_id:
+            return alpha
+        if parent == b_id:
+            return ([frow(d_id, "Deep Folder")] if deep else []) + beta
+        if parent == d_id:
+            return deep
+        return []
+
     def children(self, rk):
         it = self.items.get(rk)
         if not it:
@@ -2737,6 +2784,20 @@ class MockPms:
                                                     composite=f"/library/sections/{s['key']}/composite/1",
                                                     refreshing=False, allowSync=False)
                                                for s in lib.sections]))
+        if len(segs) == 3 and segs[:2] == ["library", "sections"]:
+            # The section description: its browse-view menu. The app reads only the special
+            # `folder` entry from this list (whether to offer Browse by Folder); the rest mirror
+            # what a live PMS publishes (docs/pms-api.md §2b, probed 2026-10-21).
+            sec = next((s for s in lib.sections if s["key"] == segs[2]), None)
+            if sec is None:
+                return j(self.container(Directory=[]), 404)
+            return j(self.container(
+                title1=sec["title"], viewGroup="secondary",
+                Directory=[{"key": "all", "title": f"All {sec['title']}"},
+                           {"key": "unwatched", "title": "Unwatched"},
+                           {"key": "recentlyAdded", "title": "Recently Added"},
+                           {"secondary": True, "key": "genre", "title": "By Genre"},
+                           {"key": "folder", "title": "By Folder"}]))
         if len(segs) == 4 and segs[:2] == ["library", "sections"] and segs[3] == "all":
             if q.get("type") == "18":
                 rows = lib.collection_metadata(segs[2])
@@ -2760,6 +2821,15 @@ class MockPms:
             return j(self.container(Metadata=page, **extra))
         if len(segs) == 4 and segs[:2] == ["library", "sections"]:
             d = segs[3]
+            if d == "folder":
+                rows = lib.folder_listing(segs[2], q.get("parent"))
+                if rows is None:
+                    return j(self.container(Metadata=[]), 404)
+                page, extra = paged(rows)
+                # The live container's shape (probed 2026-10-21): a secondary viewGroup, the
+                # `title2` the view names itself with, and BOTH row kinds in one `Metadata[]`.
+                return j(self.container(Metadata=page, viewGroup="secondary",
+                                        title2="By Folder", **extra))
             if d == "collections":
                 rows, extra = paged(lib.collection_metadata(segs[2]))
                 return j(self.container(Metadata=rows, **extra))

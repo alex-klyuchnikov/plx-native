@@ -1,0 +1,37 @@
+# Fork-only build lane: an installable debug .ipk with NO telemetry.
+# Not part of the product pipeline: it skips RELEASE/SYMBOLS, the fw-compat audit and the
+# verify jobs, and it compiles telemetry OUT by passing no PLX_*_DSN/KEY at all.
+# This file lives only on the `ipk-fork` branch of a personal fork.
+name: fork ipk (debug, no telemetry)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ipk:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install the pinned Rust and the armv7 target
+        uses: ./.github/actions/rust-toolchain
+
+      - name: Cache the pinned downloads
+        uses: ./.github/actions/deps-cache
+
+      - id: ndk
+        uses: ./.github/actions/webos-ndk
+
+      - name: Build + package
+        env:
+          WEBOS_SDK: ${{ steps.ndk.outputs.sdk-dir }}
+          FLAVOR: debug
+        run: |
+          make -j"$(nproc)"
+          make ipk FLAVOR=debug
+
+      - name: Upload the .ipk
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plxnative-ipk
+          path: pkg/*.ipk

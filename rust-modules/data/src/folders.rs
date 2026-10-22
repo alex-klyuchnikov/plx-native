@@ -53,7 +53,8 @@ pub enum FoldersStatus {
 }
 
 /// One row of a folder listing. The two kinds the server mixes into one `Metadata[]`.
-#[derive(Clone, Debug, PartialEq)]
+/// `Serialize`/`Deserialize` because the tape records a page landing as JSON (`stores::tape`).
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FolderCell {
     /// A sub-folder: its name and the `parent` id parsed out of its row's `key` — the id the drill
     /// request sends back verbatim. No child count: the server sends none.
@@ -207,7 +208,7 @@ pub struct FoldersState {
 impl Default for FoldersState {
     fn default() -> Self {
         Self { ledger: Default::default(), stamp: 0, levels: Vec::new(), generation: 0,
-            revision: 0, retry_cd: 0, offers: Vec::new(), probe_wanted: None, probe_gen: 0 }
+            revision: 0, retry_cd: 0, offers: Vec::new(), probe_wanted: None, probe_gen: 1 }
     }
 }
 
@@ -554,11 +555,13 @@ enum Landing {
 }
 
 fn run_job(client: &'static plx_plex::plex::Client, sid: ServerId, job: Job) -> Landing {
-    if let Job::Offer { section } = job {
-        let Some(container) = client.section_views(section) else { return Landing::Offer { offered: false } };
-        return Landing::Offer { offered: container.directory.iter().any(|d| d.key == "folder") };
-    }
-    let Job::Page { section, parent, start } = job;
+    let (section, parent, start) = match job {
+        Job::Offer { section } => {
+            let Some(container) = client.section_views(section) else { return Landing::Offer { offered: false } };
+            return Landing::Offer { offered: container.directory.iter().any(|d| d.key == "folder") };
+        }
+        Job::Page { section, parent, start } => (section, parent, start),
+    };
     let Some(page) = client.section_folders(section, parent, start as i64, PAGE_SIZE as i64) else {
         return Landing::Transport;
     };

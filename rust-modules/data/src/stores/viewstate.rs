@@ -68,13 +68,14 @@ impl ViewStateStore {
         hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> super::StoreOutcome,
         person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
         collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+        folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
         search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
         metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
     ) -> bool {
         if matches!(&cmd, ViewStateCmd::Reset) {
             self.adapter = Arc::new(Default::default());
         }
-        let answer = self.state.run(&self.adapter, cmd, browse, hubs, person, collection, search, metadata);
+        let answer = self.state.run(&self.adapter, cmd, browse, hubs, person, collection, folders, search, metadata);
         self.bump();
         answer
     }
@@ -87,12 +88,13 @@ impl ViewStateStore {
         hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> super::StoreOutcome,
         person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
         collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+        folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
         search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
         metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
     ) -> super::EndpointRefreshSet {
         let busy = self.state.is_busy();
         let endpoints = self.state.pump_with_gate(&self.adapter, gate,
-            browse, hubs, person, collection, search, metadata);
+            browse, hubs, person, collection, folders, search, metadata);
         if busy != self.state.is_busy() {
             self.bump();
         }
@@ -106,11 +108,12 @@ impl ViewStateStore {
         hubs: &mut dyn FnMut(crate::stores::hubs::HubsCmd) -> super::StoreOutcome,
         person: &mut dyn FnMut(crate::stores::person::PersonCmd) -> bool,
         collection: &mut dyn FnMut(crate::stores::collection::CollectionCmd) -> bool,
+        folders: &mut dyn FnMut(crate::stores::folders::FoldersCmd) -> bool,
         search: &mut dyn FnMut(crate::stores::search::SearchCmd) -> bool,
         metadata: &mut dyn FnMut(crate::stores::metadata::MetadataCmd) -> bool,
     ) -> super::EndpointRefreshSet {
-        self.pump_with_gate(plx_machine::landgate::fixture_gate(), browse, hubs, person, collection, search,
-            metadata)
+        self.pump_with_gate(plx_machine::landgate::fixture_gate(), browse, hubs, person, collection, folders,
+            search, metadata)
     }
 
     /// Hold the terminal hub refetch while the player is on top; see

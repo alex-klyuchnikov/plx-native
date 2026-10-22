@@ -150,17 +150,15 @@ impl LibraryScreen {
                 widest.push(control(slot.clone(), slot));
             }
         }
-        // The By Folder control follows the same budget rule as Collections: its room is kept in
-        // the widest case for EVERY library, so the names never repack between an unknown answer
-        // and the answer; only an advertised library puts the control on the row itself.
-        match self.folders {
-            FoldersControl::Shown => {
-                right.push(item(msg::library_header_folders()));
-                widest.push(item(msg::library_header_folders()));
-            }
-            FoldersControl::Unknown | FoldersControl::Hidden => {
-                widest.push(item(msg::library_header_folders()));
-            }
+        // The By Folder control reserves its room ONLY once the answer is known to be yes. The
+        // Collections rule (room for every answer, so the names never repack) cannot hold here:
+        // with four controls the widest cluster passes the names'-room bound (60% of the row) in
+        // six of the eight shipped languages, so a folder answer that lands late repacks the names
+        // once, through the row's `HeaderSwap`, rather than taking that room from every library
+        // that will never offer the view.
+        if matches!(self.folders, FoldersControl::Shown) {
+            right.push(item(msg::library_header_folders()));
+            widest.push(item(msg::library_header_folders()));
         }
         right.push(HeaderItem { selected_plate: self.listing == Listing::Recommended,
             ..item(msg::library_header_recommended()) });

@@ -2602,7 +2602,10 @@ pub const SCREEN_SHAPES: &[&str] = &[
 // `(row:u32,sp:..,card:Option<u32>)`, in write order; the Collection and Watchlist grids name
 // `bands` symbolically, so their shape strings did not change. One bump; the three replay fixtures
 // were re-recorded against it; the previous pin was 0x0803_2f8d_c828_6d70.
-const SCREEN_SHAPES_PIN: u64 = 0x6b71_df9e_04db_2b76;
+// `FoldersScreen` (Browse by Folder) joins the inventory: its SHAPE row and the `LibraryFolders`
+// argument's shape are new. One bump; the three replay fixtures must be re-recorded against it
+// (`tests/fixtures/replay/README.md`); the previous pin was 0x6b71_df9e_04db_2b76.
+const SCREEN_SHAPES_PIN: u64 = 0x9960_af6a_b84e_d278;
 
 #[cfg(test)]
 mod arg_tests {

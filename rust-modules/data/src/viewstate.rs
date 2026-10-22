@@ -1104,6 +1104,7 @@ mod tests {
         let mut hubs = Vec::new();
         let mut person = Vec::new();
         let mut collection = Vec::new();
+        let mut folders = Vec::new();
         let mut search = Vec::new();
         let mut metadata_store = crate::stores::metadata::MetadataStore::default();
         // the page is mounted on the pressed item: an edit that matches nothing raises no notice
@@ -1127,6 +1128,7 @@ mod tests {
             },
             &mut |cmd| { person.push(cmd); true },
             &mut |cmd| { collection.push(cmd); true },
+            &mut |cmd| { folders.push(cmd); true },
             &mut |cmd| { search.push(cmd); true },
             &mut |cmd| metadata_store.run(cmd),
         ));
@@ -1143,6 +1145,9 @@ mod tests {
         assert!(matches!(collection.as_slice(), [crate::stores::collection::CollectionCmd::ApplyView {
             at, edit: ViewEdit::Watched(true)
         }] if at.sid == sid && at.rk == "7" && at.scope == Scope::Leaf), "a collection member's disc flips with the press");
+        assert!(matches!(folders.as_slice(), [crate::stores::folders::FoldersCmd::ApplyView {
+            at, edit: ViewEdit::Watched(true)
+        }] if at.sid == sid && at.rk == "7" && at.scope == Scope::Leaf), "a folder listing's file tile flips with the press");
         assert!(matches!(search.as_slice(), [crate::stores::search::SearchCmd::ApplyView {
             at, edit: ViewEdit::Watched(true)
         }] if at.sid == sid && at.rk == "7" && at.scope == Scope::Leaf));

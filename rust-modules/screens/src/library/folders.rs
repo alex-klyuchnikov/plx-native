@@ -16,9 +16,7 @@
 //! wear the neutral folder face (`plx_ui::folder_tile`); file tiles are ordinary posters — the
 //! caption policy, the resume bar and the watched mark all work on them unchanged.
 
-use std::ffi::CString;
-
-use plx_data::folders::{FolderCell, FoldersLevel, FoldersStatus, FoldersView};
+use plx_data::folders::{FolderCell, FoldersLevel, FoldersStatus};
 use plx_data::pms::PmsMovie;
 use plx_data::stores::folders::FoldersCmd;
 use plx_ui::cards::{self as ui_cards, TileLabel};
@@ -28,15 +26,15 @@ use plx_ui::label::{Label, VAlign};
 use plx_machine::machine::{Canon, Cx, Effects, EntryId, GroupId, Handled, Host, InputEvent,
     InputKind, Key, Leave, LogicalState, Machine, Measure, Tick, Edge};
 use plx_machine::present::Provenance;
-use plx_ui::screen::{At, By, DrawFrame, ElemKind, FocusSource, Focusable, GroupKind, GroupSpec,
-    HitSource, Link, RenderStrategy, Screen, ScreenEvent, Seat};
+use plx_ui::screen::{At, DrawFrame, FocusSource, Focusable, HitSource, Link, RenderStrategy,
+    Screen, ScreenEvent};
 use plx_ui::route_screen::{self, CRUMB_BAND, CRUMB_RISE};
 use plx_ui::theme;
-use plx_ui::widgets::{self, Art, PageGround, StatusKind, StatusOverlay};
+use plx_ui::widgets::{Art, PageGround, StatusKind, StatusOverlay};
 use plx_ui::{Env, Painter, Rect};
 
 use super::super::registry::{merged_ranges, row_neighbourhood, tile_facts, AppFx, CardKeys,
-    ContentArg, ContentLike, ContentReq, FoldersLike, PageMemory};
+    ContentArg, ContentLike, ContentReq, DirectoryLike, FoldersLike, LibraryReq, PageMemory};
 
 const RETRY_ELEM: u32 = 1;
 const FIRST_CARD_ELEM: u32 = 0x1000;
@@ -142,7 +140,7 @@ impl<'a> Cells<'a> {
         let identity = self.cards.get(elem)?;
         if identity.sid == plx_plex::plex::ServerId::UNSET {
             // A folder row: its slot is the level's row whose folder carries this id.
-            let parent = identity.rk.strip_prefix("folder:")?.parse().ok()?;
+            let parent = identity.rk.strip_prefix("folder:")?.parse::<i64>().ok()?;
             (0..self.level.shown()).find(|&i| matches!(self.level.cell(i),
                 Some(FolderCell::Folder { parent: p, .. }) if *p == parent))
         } else {
@@ -158,10 +156,10 @@ impl<H: Host<Elem = u32>> CardSource<H> for Cells<'_> {
     fn index_of(&self, e: &u32) -> Option<usize> { self.index(*e) }
     fn art(&self, i: usize) -> Art<'_> {
         match self.level.cell(i) {
-            Some(FolderCell::Item(m)) => Art::Poster(tile_facts::of(m)),
+            Some(FolderCell::Item(m)) => Art::Poster(Some(tile_facts::of(m))),
             // A folder row carries no artwork: the face is the neutral folder tile, drawn in
             // `overlay` over the tile's ground.
-            _ => Art::None,
+            _ => Art::Poster(None),
         }
     }
     fn label(&self, i: usize) -> TileLabel {
@@ -177,7 +175,9 @@ impl<H: Host<Elem = u32>> CardSource<H> for Cells<'_> {
     fn progress(&self, i: usize) -> Option<f32> { self.level.cell(i).and_then(|c| c.item()).and_then(PmsMovie::resume_frac) }
     fn overlay(&self, p: Painter, i: usize, tile: &ui_cards::Tile, _measure: &dyn Measure) {
         if matches!(self.level.cell(i), Some(FolderCell::Folder { .. })) {
-            plx_ui::folder_tile::draw(p, tile.rest, tile.rect, tile.radius);
+            let (w, h) = (tile.rect.w / tile.scale, tile.rect.h / tile.scale);
+            let rest = Rect::new(tile.rect.cx() - w * 0.5, tile.rect.cy() - h * 0.5, w, h);
+            plx_ui::folder_tile::draw(p, rest, tile.rect, tile.radius);
         }
     }
     fn unread(&self, i: usize) -> bool { self.level.cell(i).is_none() }
@@ -235,6 +235,14 @@ impl Page {
             && (root || level.target.parent == Some(self.parent as i64))).then_some(level)
     }
 
+    /// The title the page wears: the folder's own name, or the section's at the root.
+    fn head_title<H: DirectoryLike>(&self, cx: &Cx<'_, H>) -> std::borrow::Cow<'_, str> {
+        if !self.name.is_empty() { return std::borrow::Cow::Borrowed(&self.name); }
+        H::directory(cx).current().and_then(|i| H::directory(cx).sections().get(i))
+            .map(|s| std::borrow::Cow::Borrowed(s.row.title.as_str()))
+            .unwrap_or_else(|| std::borrow::Cow::Borrowed(plx_platform::i18n::msg::library_header_folders()))
+    }
+
     fn project(&mut self, level: &FoldersLevel, revision: Option<u64>) {
         let shown = level.shown();
         let default = [0..4 * ui_cards::GRID_COLS];
@@ -244,10 +252,11 @@ impl Page {
         }
         let rows: Vec<(usize, &FolderCell)> = ranges.iter().flat_map(|r| r.clone())
             .filter_map(|i| level.cell(i).map(|cell| (i, cell))).collect();
-        let keys = self.cards.intern_all(rows.iter().map(|(_, cell)| match *cell {
+        let rks: Vec<(plx_plex::plex::ServerId, String)> = rows.iter().map(|(_, cell)| match *cell {
             FolderCell::Folder { parent, .. } => (plx_plex::plex::ServerId::UNSET, folder_rk(*parent)),
             FolderCell::Item(m) => (m.sid, m.rk.clone()),
-        }), "folders");
+        }).collect();
+        let keys = self.cards.intern_all(rks.iter().map(|(sid, rk)| (*sid, rk.as_str())), "folders");
         assert!(self.cards.next <= HOLE_ELEM_BASE, "folders element-key space reached the hole range");
         let before: std::collections::HashSet<u32> = self.proj.index.keys().copied().collect();
         let mut proj = Projection { total: shown, revision, ..Default::default() };
@@ -388,16 +397,12 @@ impl FoldersScreen {
         self.page.level(cx)
     }
 
-    /// The title the page wears: the folder's own name, or the section's at the root.
-    fn head_title<H: FoldersLike>(&self, cx: &Cx<'_, H>) -> std::borrow::Cow<'_, str> {
-        if !self.page.name.is_empty() { return std::borrow::Cow::Borrowed(&self.page.name); }
-        H::directory(cx).current().and_then(|i| H::directory(cx).sections().get(i))
-            .map(|s| std::borrow::Cow::Borrowed(s.row.title.as_str()))
-            .unwrap_or_else(|| std::borrow::Cow::Borrowed(plx_platform::i18n::msg::library_header_folders()))
-    }
-
-    fn request_open<H: ContentLike + FoldersLike>(&mut self, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
-        let sid = self.level(cx).map(|l| l.target.sid).unwrap_or_else(H::current_server_id);
+    fn request_open<H: ContentLike + FoldersLike + DirectoryLike>(&mut self, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
+        // The server the level belongs to; for the first open of a section, the directory's current
+        // library. `UNSET` only when neither answers, which the store treats as "no client yet".
+        let sid = self.level(cx).map(|l| l.target.sid)
+            .or_else(|| H::directory(cx).current().and_then(|i| H::directory(cx).sections().get(i)).and_then(|s| s.sid))
+            .unwrap_or(plx_plex::plex::ServerId::UNSET);
         fx.push(plx_machine::machine::Fx::App(AppFx::Store(
             plx_data::stores::StoreId::Folders,
             plx_data::stores::StoreCmd::Folders(FoldersCmd::Open {
@@ -454,7 +459,7 @@ impl FoldersScreen {
     /// The page's read-out, one per non-Ready status (the shared `StatusOverlay`, the Library's
     /// placement).
     fn status_overlay<'a>(level: Option<&FoldersLevel>, tick: u32,
-        measure: &dyn Measure) -> StatusOverlay<'a> {
+        _measure: &dyn Measure) -> StatusOverlay<'a> {
         match level.map(|l| l.status()).unwrap_or(FoldersStatus::Loading) {
             // placeholder-exempt: builds the value only; counted where drawn (StatusOverlay::draw_geometry, Working)
             FoldersStatus::Loading => StatusOverlay::new(STATUS_FRAME, plx_platform::i18n::msg::browse_folders_loading_c(), StatusKind::Working).phase(tick),
@@ -552,7 +557,7 @@ impl<H: ContentLike + FoldersLike> Machine<H> for FoldersScreen {
                                             }),
                                         )));
                                         fx.push(plx_machine::machine::Fx::App(AppFx::Library(
-                                            plx_screens::registry::LibraryReq::OpenFolder {
+                                            LibraryReq::OpenFolder {
                                                 section: self.page.section,
                                                 parent: *parent as u64,
                                                 name: title.clone(),

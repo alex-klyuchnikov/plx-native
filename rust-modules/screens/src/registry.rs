@@ -2104,7 +2104,7 @@ pub struct AppMounter {
 /// it for its own host exactly as the dispatcher instantiates everything else.
 impl<H> Mounter<H> for AppMounter
 where
-    H: plx_machine::machine::Host<Arg = AppArg> + HomeLike + LibraryLike + SearchLike + PlayerLike + AuthLike + PersonLike + CollectionLike + MetadataLike,
+    H: plx_machine::machine::Host<Arg = AppArg> + HomeLike + LibraryLike + SearchLike + PlayerLike + AuthLike + PersonLike + CollectionLike + MetadataLike + FoldersLike,
 {
     fn mount(
         &mut self,
@@ -2227,7 +2227,7 @@ where
             // store's, and the application opened that level (the store stack and the nav stack move
             // together), so the mount only names the level to draw.
             AppArg::LibraryFolders { section, parent, name } => {
-                Box::new(crate::library::FoldersScreen::new(entry, id, *section, *parent, name.clone()))
+                Box::new(crate::library::FoldersScreen::new(entry, *section, *parent, name.clone()))
             }
             AppArg::Search => {
                 let mut page = crate::search::SearchScreen::new(entry, id);

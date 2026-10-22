@@ -4,6 +4,7 @@ use super::*;
 #[allow(unused_imports)]
 use super::test_support::*;
 use super::test_support::{frame};
+use crate::app::content::library_request_page;
 
 #[test]
 fn library_strip_profile_navigation_and_armed_pill_use_the_actual_engine_identity() {
@@ -215,4 +216,52 @@ fn library_strip_profile_navigation_and_armed_pill_use_the_actual_engine_identit
         probe.contains("pill=-1") && probe.contains("menu=1"),
         "a modal owns focus even though the covered Library remembers Search: {probe}"
     );
+}
+
+#[test]
+fn a_folder_page_can_push_a_deeper_folder_page() {
+    let _g = plx_base::testlock::serial();
+    let mut d = Dispatcher::<AppHost>::new();
+    let mut rig = Bridge::for_test(|| 0);
+    let (word, _) = frame(
+        &mut d,
+        &mut rig,
+        AppArg::LibraryFolders { section: 1, parent: 0, name: String::new() },
+        tick(0),
+        vec![],
+    );
+    assert_eq!(word, "folders");
+    let instance = d.nav.top_page().unwrap().inst.as_ref().unwrap().id;
+    rig.take_library_reqs();
+    d.emit(
+        MachineId::Instance(instance),
+        Fx::App(AppFx::Library(plx_screens::registry::LibraryReq::OpenFolder {
+            section: 1,
+            parent: 2,
+            name: "child".into(),
+        })),
+    );
+    let route = d.top_arg().unwrap().clone();
+    frame(&mut d, &mut rig, route, tick(1), vec![]);
+    let performed = pump_navigation(&mut d, &mut rig);
+    for i in 2..20 {
+        let route = d.top_arg().unwrap().clone();
+        frame(&mut d, &mut rig, route, tick(i), vec![]);
+    }
+    assert!(performed.iter().any(|s| s.starts_with("library:OpenFolder")), "{performed:?}");
+    assert!(
+        matches!(d.top_arg(), Some(AppArg::LibraryFolders { section: 1, parent: 2, .. })),
+        "the folder drill did not push the deeper folder page"
+    );
+}
+
+#[test]
+fn the_folder_page_answers_library_requests() {
+    assert!(library_request_page(&AppArg::Library));
+    assert!(library_request_page(&AppArg::LibraryFolders {
+        section: 1,
+        parent: 2,
+        name: "child".into(),
+    }));
+    assert!(!library_request_page(&AppArg::Home));
 }

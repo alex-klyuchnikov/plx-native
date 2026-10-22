@@ -132,7 +132,7 @@ fn pump_requests(d: &mut Dispatcher<AppHost>, rig: &mut Bridge, mut item: Option
     }
     for (source, request, ret) in rig.take_library_reqs() {
         let (Some(entry), MachineId::Instance(instance)) = (asker(d, source), source) else { continue };
-        if !d.top_arg().is_some_and(|arg| arg.is_library_family()) { continue; }
+        if !d.top_arg().is_some_and(crate::app::content::library_request_page) { continue; }
         // The publication is the store's business and the page re-asks every frame until it lands,
         // so it is performed as the loop does and never listed among what a key caused.
         if let plx_screens::registry::LibraryReq::PublishShelves { target, hidden_page, at_head } = request {

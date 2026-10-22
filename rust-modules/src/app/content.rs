@@ -875,6 +875,10 @@ mod search_action_tests {
     }
 }
 
+pub(crate) fn library_request_page(arg: &AppArg) -> bool {
+    arg.is_library_family() || matches!(arg, AppArg::LibraryFolders { .. })
+}
+
 fn library_requests(app: &mut App, now: u32) {
     use plx_screens::registry::LibraryReq;
     for (source, request, ret) in app.bridge.take_library_reqs() {
@@ -886,7 +890,7 @@ fn library_requests(app: &mut App, now: u32) {
         }
         // The full grid and the two pages its header pushes (Collections, Recommended) are all the
         // library screen, so they answer the same requests.
-        let library_page = app.route().is_library_family();
+        let library_page = library_request_page(&app.route());
         if app.pages.nav.input_owner() != Some(InputOwner::Entry(entry)) || !library_page { continue; }
         let Some(ret) = library_navigation(&mut app.pages, &mut app.bridge, &request, ret) else { continue };
         unsafe {

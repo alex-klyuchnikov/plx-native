@@ -1234,10 +1234,6 @@ impl Bridge {
 
     pub(crate) fn folders_pump(&mut self) -> bool { self.stores.folders_pump() }
 
-    pub(crate) fn folders_view(&self) -> plx_data::folders::FoldersView<'_> {
-        self.stores.folders_view()
-    }
-
     pub(crate) fn metadata_mut(&mut self) -> &mut plx_data::stores::metadata::MetadataStore {
         &mut self.stores.metadata
     }

@@ -112,15 +112,13 @@ pub struct FoldersLevel {
     focus: Option<usize>,
     status: FoldersStatus,
     client_key: Option<(u32, u32)>,
-    /// The store's request epoch this level was opened under.
-    generation: u32,
 }
 
 impl FoldersLevel {
-    fn loading(target: FolderTarget, want: usize, client_key: Option<(u32, u32)>, generation: u32) -> Self {
+    fn loading(target: FolderTarget, want: usize, client_key: Option<(u32, u32)>) -> Self {
         Self { target, cells: PageCache::default(), read: 0, total: 0, more: true,
             wanted: 0..want.max(PAGE_SIZE), focus: None, status: FoldersStatus::Loading,
-            client_key, generation }
+            client_key }
     }
 
     /// The row at absolute index `i`, or `None` for a hole.
@@ -269,7 +267,7 @@ impl FoldersState {
                 // ancestors cannot be rebuilt without re-drilling — show the level it names.
                 self.supersede(adapter);
                 let client_key = plx_plex::plex::client_for(target.sid).map(|c| (c.instance_gen(), c.token_gen()));
-                self.levels = vec![FoldersLevel::loading(target, PAGE_SIZE, client_key, self.generation)];
+                self.levels = vec![FoldersLevel::loading(target, PAGE_SIZE, client_key)];
                 true
             }
             FoldersCmd::Drill { parent, title } => {
@@ -278,9 +276,9 @@ impl FoldersState {
                 if top.target.parent == Some(parent) {
                     return false;
                 }
-                let (sid, section, client_key, generation) = (top.target.sid, top.target.section, top.client_key, self.generation);
+                let (sid, section, client_key) = (top.target.sid, top.target.section, top.client_key);
                 self.levels.push(FoldersLevel::loading(
-                    FolderTarget { sid, section, parent: Some(parent), title }, PAGE_SIZE, client_key, generation));
+                    FolderTarget { sid, section, parent: Some(parent), title }, PAGE_SIZE, client_key));
                 true
             }
             FoldersCmd::Pop => {
@@ -348,7 +346,7 @@ impl FoldersState {
             .map(|l| (l.target.clone(), l.wanted.clone(), l.focus)).collect();
         self.supersede_client(adapter);
         self.levels = spec.into_iter().map(|(target, wanted, focus)| {
-            let mut l = FoldersLevel::loading(target, wanted.end, now, self.generation);
+            let mut l = FoldersLevel::loading(target, wanted.end, now);
             (l.wanted, l.focus) = (wanted, focus);
             l
         }).collect();

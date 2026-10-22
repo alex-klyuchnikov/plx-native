@@ -372,7 +372,7 @@ impl<H: ContentLike + FoldersLike + LibraryLike> StackPage<H> for Page {
     }
 }
 
-plx_ui::focusable_via_view!(FoldersScreen, H: [ContentLike + FoldersLike], view);
+plx_ui::focusable_via_view!(FoldersScreen, H: [ContentLike + FoldersLike + LibraryLike], view);
 
 impl FoldersScreen {
     pub const SHAPE: &'static str = "FoldersScreen{entry:u32,section:u32,parent:u64,name:String,next_elem:u32,card_keys:[{sid:u32,rk:String,elem:u32}],stack:Stack{scroll:{pos:f32,vel:f32},target:f32,sections:[Grid{bands,pop}]}}";
@@ -387,7 +387,7 @@ impl FoldersScreen {
         }
     }
 
-    fn view<H: ContentLike + FoldersLike>(&self) -> impl Focusable<H> + '_ {
+    fn view<H: ContentLike + FoldersLike + LibraryLike>(&self) -> impl Focusable<H> + '_ {
         self.stack.view(&self.page)
     }
 
@@ -415,7 +415,7 @@ impl FoldersScreen {
         )));
     }
 
-    fn plan<H: ContentLike + FoldersLike>(&mut self, cx: &Cx<'_, H>) {
+    fn plan<H: ContentLike + FoldersLike + LibraryLike>(&mut self, cx: &Cx<'_, H>) {
         let Some(level) = self.level(cx) else { return };
         let cols = ui_cards::GRID_COLS;
         let mut ranges = match self.stack.grid_window(&self.page, cx, Sec::Items) {
@@ -430,7 +430,7 @@ impl FoldersScreen {
         self.page.want = ranges;
     }
 
-    fn reproject<H: ContentLike + FoldersLike>(&mut self, cx: &Cx<'_, H>) {
+    fn reproject<H: ContentLike + FoldersLike + LibraryLike>(&mut self, cx: &Cx<'_, H>) {
         let Some(level) = self.level(cx) else { return };
         self.plan(cx);
         self.page.project(level, Some(H::folders(cx).revision()));
@@ -438,7 +438,7 @@ impl FoldersScreen {
 
     /// Tell the store which indices the grid shows and which holds focus, so it keeps those pages
     /// and evicts the rest (the Collection page's rule, without the restore anchor).
-    fn send_window<H: ContentLike + FoldersLike>(&mut self, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
+    fn send_window<H: ContentLike + FoldersLike + LibraryLike>(&mut self, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
         let Some(level) = self.level(cx) else { return };
         let painted = self.stack.grid_window(&self.page, cx, Sec::Items).unwrap_or(0..0);
         let focus = cx.focus.current.filter(|key| key.entry == self.entry())
@@ -471,7 +471,7 @@ impl FoldersScreen {
         }
     }
 
-    fn resync<H: ContentLike + FoldersLike>(&mut self, cx: &Cx<'_, H>) {
+    fn resync<H: ContentLike + FoldersLike + LibraryLike>(&mut self, cx: &Cx<'_, H>) {
         let Some(level) = self.level(cx) else { return };
         let revision = H::folders(cx).revision();
         if self.page.synced != Some(revision) {

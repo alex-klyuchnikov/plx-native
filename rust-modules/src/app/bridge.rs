@@ -2287,10 +2287,15 @@ fn frame_ingest(
     // The folder-view advertisement asked for the current library as soon as the directory is
     // known, so the By Folder control is usually decided before its page is opened. The store
     // dedupes: one probe per section per client, and asking again is free.
-    if let Some(index) = rig.directory.view().current() {
-        if let Some(section) = rig.directory.view().sections().get(index) {
-            if let Some(sid) = section.sid {
-                rig.stores.folders_run(plx_data::stores::folders::FoldersCmd::Probe { sid, section: section.key });
+    let on_library = d.top_or_mounting_arg().is_some_and(|arg| {
+        matches!(arg, AppArg::Library { .. } | AppArg::LibraryFolders { .. })
+    });
+    if on_library {
+        if let Some(index) = rig.directory.view().current() {
+            if let Some(section) = rig.directory.view().sections().get(index) {
+                if let Some(sid) = section.sid {
+                    rig.stores.folders_run(plx_data::stores::folders::FoldersCmd::Probe { sid, section: section.key });
+                }
             }
         }
     }

@@ -85,6 +85,14 @@ pub fn erase_owned_artifacts(root: &Path,
 // segments share the remaining budget; stopping must not itself exceed the hard cap.
 const CAP_NOTE_RESERVE: usize = 128;
 const DATA_CAP_BYTES: usize = CAP_BYTES - CAP_NOTE_RESERVE;
+/// The decoded-`Value` charge limit `Recording::load` grades a committed fixture
+/// against. The 64 MiB reservation is the WRITER's and the source cap; the charge
+/// model (32 map slots, 8 string copies, 8 Value slots per node) is deliberately
+/// conservative, and a fixture recorded on a ~110 fps Linux sim charges past 64 MiB
+/// at the same wall-clock flow a ~58 fps Mac fixture fit inside it. Replay loads are
+/// dev/hostsim-only, so only the decode charge is raised; the input cap and the
+/// writer keep `CAP_BYTES`.
+pub const DECODE_CAP_BYTES: usize = 4 * CAP_BYTES;
 
 /// What a recording is refused for.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -693,7 +701,7 @@ pub struct Recording {
 impl Recording {
     /// Parse a manifest and its segments' bytes (in order). Refuses another schema or shape.
     pub fn parse(manifest: &str, segments: &[&[u8]], state_fp: u64) -> Result<Self, RecError> {
-        Self::parse_budget(manifest, segments, state_fp, CAP_BYTES)
+        Self::parse_budget(manifest, segments, state_fp, DECODE_CAP_BYTES)
     }
     fn parse_budget(manifest: &str, segments: &[&[u8]], state_fp: u64, decoded_limit: usize) -> Result<Self, RecError> {
         input_budget(manifest.len(),segments.iter().map(|bytes| bytes.len()))?;

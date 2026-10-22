@@ -269,6 +269,7 @@ fn store(command: &plx_data::stores::StoreCmd) -> Result<Value, &'static str> {
                 FoldersCmd::Window { wanted, focus } => json!({"window":[wanted.start,wanted.end,focus]}),
                 FoldersCmd::Close => json!("close"),
                 FoldersCmd::Reset => json!("reset"),
+                FoldersCmd::Probe { sid, section } => json!({"probe":[sid.raw(),section]}),
                 FoldersCmd::ApplyView { .. } => return Err("unsupported controlled folders command"),
             }})
         }

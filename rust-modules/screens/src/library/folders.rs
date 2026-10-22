@@ -34,7 +34,7 @@ use plx_ui::widgets::{Art, PageGround, StatusKind, StatusOverlay};
 use plx_ui::{Env, Painter, Rect};
 
 use super::super::registry::{merged_ranges, row_neighbourhood, tile_facts, AppFx, CardKeys,
-    ContentArg, ContentLike, ContentReq, DirectoryLike, FoldersLike, LibraryReq, PageMemory};
+    ContentArg, ContentLike, ContentReq, FoldersLike, LibraryLike, LibraryReq, PageMemory};
 
 const RETRY_ELEM: u32 = 1;
 const FIRST_CARD_ELEM: u32 = 0x1000;
@@ -236,8 +236,8 @@ impl Page {
     }
 
     /// The title the page wears: the folder's own name, or the section's at the root.
-    fn head_title<H: DirectoryLike>(&self, cx: &Cx<'_, H>) -> std::borrow::Cow<'_, str> {
-        if !self.name.is_empty() { return std::borrow::Cow::Borrowed(&self.name); }
+    fn head_title<'a, H: LibraryLike>(&self, cx: &Cx<'a, H>) -> std::borrow::Cow<'a, str> {
+        if !self.name.is_empty() { return std::borrow::Cow::Owned(self.name.clone()); }
         H::directory(cx).current().and_then(|i| H::directory(cx).sections().get(i))
             .map(|s| std::borrow::Cow::Borrowed(s.row.title.as_str()))
             .unwrap_or_else(|| std::borrow::Cow::Borrowed(plx_platform::i18n::msg::library_header_folders()))
@@ -282,7 +282,7 @@ impl Page {
     }
 }
 
-impl<H: ContentLike + FoldersLike> StackPage<H> for Page {
+impl<H: ContentLike + FoldersLike + LibraryLike> StackPage<H> for Page {
     type Key = Sec;
     type Cards<'a> = Cells<'a>;
 
@@ -397,7 +397,7 @@ impl FoldersScreen {
         self.page.level(cx)
     }
 
-    fn request_open<H: ContentLike + FoldersLike + DirectoryLike>(&mut self, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
+    fn request_open<H: ContentLike + FoldersLike + LibraryLike>(&mut self, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) {
         // The server the level belongs to; for the first open of a section, the directory's current
         // library. `UNSET` only when neither answers, which the store treats as "no client yet".
         let sid = self.level(cx).map(|l| l.target.sid)
@@ -502,7 +502,7 @@ impl FoldersScreen {
     }
 }
 
-impl<H: ContentLike + FoldersLike> Machine<H> for FoldersScreen {
+impl<H: ContentLike + FoldersLike + LibraryLike> Machine<H> for FoldersScreen {
     type Ev = ScreenEvent<H>;
     fn step(&mut self, ev: &Self::Ev, cx: &Cx<'_, H>, fx: &mut Effects<'_, H>) -> Handled {
         match ev {
@@ -600,7 +600,7 @@ impl<H: ContentLike + FoldersLike> Machine<H> for FoldersScreen {
     }
 }
 
-impl<H: ContentLike + FoldersLike> Screen<H> for FoldersScreen {
+impl<H: ContentLike + FoldersLike + LibraryLike> Screen<H> for FoldersScreen {
     fn focused_card<'a>(&self, cx: &Cx<'a, H>, focus: Option<plx_machine::machine::FocusKey<u32>>, at: Option<At>) -> Option<plx_ui::screen::FocusedCard<'a>> {
         let item = self.focused_item(focus, cx)?;
         let placed = focus.zip(at).and_then(|(key, at)| Focusable::<H>::place(self, &key.elem, cx, at));

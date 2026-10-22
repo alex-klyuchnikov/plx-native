@@ -45,8 +45,8 @@ sudo apt-get update
 sudo apt-get install -y build-essential python3 pkg-config libsdl2-dev libsdl2-ttf-dev libgl1-mesa-dev
 ```
 
-The pinned Rust (1.99.1 + clippy + rustfmt) auto-installs from
-`rust-modules/rust-toolchain.toml` on the first `make`.
+The pinned Rust (the toolchain, clippy and rustfmt named in
+`rust-modules/rust-toolchain.toml`) auto-installs from that file on the first `make`.
 
 ## 4. Run the gates (from the repo root)
 

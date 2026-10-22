@@ -21,14 +21,21 @@ cd plx-native
 git fetch origin && git checkout browse-by-folders
 ```
 
-If the branch is not pushed yet, transfer it from the Windows checkout:
+If the branch is not pushed yet, transfer it from the Windows checkout. The bundle is
+already made (the upstream repo is not yours, so there is nothing to push to):
 
 ```powershell
-# in C:\Hobbies\plx-native
-git bundle create C:\Hobbies\plx-native\branch.bundle main..browse-by-folders
+# already done, recreating is harmless:
+git bundle create C:\Hobbies\plx-native-folders.bundle main..browse-by-folders
 ```
-then `git fetch branch.bundle browse-by-folders:browse-by-folders` in WSL
-(copy the .bundle into ~ first).
+
+```bash
+cp /mnt/c/Hobbies/plx-native-folders.bundle ~/
+cd ~/plx-native
+git fetch origin main          # the bundle requires main's tip dbe7b014 present
+git fetch ~/plx-native-folders.bundle browse-by-folders:browse-by-folders
+git checkout browse-by-folders
+```
 
 ## 3. Toolchain + system packages
 

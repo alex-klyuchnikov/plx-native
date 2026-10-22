@@ -287,6 +287,37 @@ Discover guid to a server's own ratingKey; `docs/watchlist.md`.)
 
 ---
 
+## 2e. Browse by Folder — `/library/sections/{id}/folder` (verified live 2026-10-21, PMS 1.43.4)
+
+Plex Web's "By Folder" file browser. Two facts decide it, both read from the section's own
+description (`GET /library/sections/{id}?X-Plex-...`):
+
+- The description's `Directory[]` carries the entry `{"key": "folder", "title": "By Folder"}` —
+  with NO `secondary="1"` flag, unlike `collection`/`genre`. A section that does not list it has
+  no folder view; the app's advertisement probe (`section_views`) reads exactly this.
+- The route itself: `GET /library/sections/{id}/folder[?parent=<ratingKey>][&start=<n>&size=<m>]`.
+  Omit `parent` for the section's file-tree root.
+
+The response's `MediaContainer` mixes the two kinds of child in ONE `Metadata[]` array, and the
+shape separates them:
+
+- A **subfolder** is a two-field stub: `{"key": "/library/sections/{id}/folder?parent=<id>",
+  "title": "<name>"}` — no `ratingKey`, no `type`. The child's id is the `parent` parameter of
+  its own key; the app parses it from there and never invents one.
+- A **loose item** (a file that sits directly in this folder) arrives as ordinary full `Metadata`
+  — `ratingKey`, `guid`, `type`, `Media[]`, the same fields the gallery listing gives.
+
+Paging is the one the gallery uses: with `start`/`size` the container carries `offset`, `size`
+and `totalSize`; without them it carries only `size` and the whole level is returned. A level is
+small enough to read whole, but the app pages it like every other list (`section_folders`,
+class `paged` in `ci/plex-requests.ini`).
+
+There is no count, no thumbnail and no "is a folder" flag on a stub: the folder's own listing is
+the only way to see what is under it, and an empty folder answers `size=0` with an empty
+`Metadata[]`.
+
+---
+
 ## 3. Hubs (home shelves)
 
 ```
